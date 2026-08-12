@@ -135,10 +135,34 @@ function Landing() {
                 <span className="hero-trust">🔒 100% local — nothing is uploaded anywhere</span>
               </div>
               <div className="hero-stats">
-                <div className="hs"><CountUp to={98} /><span>% test accuracy</span></div>
-                <div className="hs"><CountUp to={99} /><span>ROC-AUC</span></div>
-                <div className="hs"><CountUp to={40} /><span>frames per video</span></div>
-                <div className="hs"><CountUp to={100} /><span>% local &amp; private</span></div>
+                <div className="hs-card">
+                  <div className="hs-icon">🎯</div>
+                  <div className="hs-info">
+                    <CountUp to={98} suffix="%" />
+                    <span>Test Accuracy</span>
+                  </div>
+                </div>
+                <div className="hs-card">
+                  <div className="hs-icon">📈</div>
+                  <div className="hs-info">
+                    <CountUp to={99} suffix="" />
+                    <span>ROC-AUC Score</span>
+                  </div>
+                </div>
+                <div className="hs-card">
+                  <div className="hs-icon">🎞️</div>
+                  <div className="hs-info">
+                    <CountUp to={40} suffix="" />
+                    <span>Frames / Video</span>
+                  </div>
+                </div>
+                <div className="hs-card">
+                  <div className="hs-icon">🔒</div>
+                  <div className="hs-info">
+                    <CountUp to={100} suffix="%" />
+                    <span>Local &amp; Private</span>
+                  </div>
+                </div>
               </div>
             </div>
 
