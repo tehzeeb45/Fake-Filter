@@ -269,7 +269,7 @@ function Landing() {
           <div className="team-grid">
             <div className="card team-card supervisor reveal">
               <div className="avatar av-3">AM</div>
-              <h4>M. Adeel Mustafa</h4>
+              <h4>Mr. Adeel Mustafa</h4>
               <p className="roll">Project Supervisor · Dept. of Computer Science</p>
               <p className="role">Institute for Art and Culture (IAC), Lahore</p>
             </div>

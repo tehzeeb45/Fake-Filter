@@ -313,12 +313,12 @@ nav { display: flex; gap: 4px; flex-wrap: wrap; }
 
 /* ---------------------------------------------------------------- how */
 .how-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
-.step { position: relative; text-align: center; padding-top: 32px; }
+.step { position: relative; text-align: center; padding-top: 28px; overflow: hidden; }
 .step-num {
-  position: absolute; top: -14px; left: 16px; font-size: 58px; font-weight: 900; line-height: 1;
+  position: absolute; top: 10px; left: 18px; font-size: 50px; font-weight: 900; line-height: 1;
   background: linear-gradient(135deg, rgba(95,140,255,.3), rgba(139,92,246,.18));
   -webkit-background-clip: text; background-clip: text; color: transparent;
-  letter-spacing: -2px; opacity: .65;
+  letter-spacing: -2px; opacity: .5; pointer-events: none;
 }
 .step-ico { font-size: 38px; margin-bottom: 12px; filter: drop-shadow(0 8px 16px rgba(95,140,255,.25)); }
 .step h4, .feature h4 { font-size: 16px; margin-bottom: 8px; }
