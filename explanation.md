@@ -1,6 +1,88 @@
-# Detailed Code & Architecture Explanation of Deepfake Detector Frontend
+# 🚀 Complete Project Architecture & Execution Workflow Guide
 
-This document provides a comprehensive code breakdown of `frontend/src/App.jsx` and all related components in the **Deepfake Detection System**. It includes complete function code blocks and detailed overall explanations of what every single function, custom hook, component, and handler does.
+This document provides a comprehensive code & architecture breakdown of the **Deepfake Detection System**. It includes the master end-to-end execution flow, file reading sequence, function code blocks, and detailed explanations of every component in the system.
+
+---
+
+## 🗺️ Master End-to-End System Flow Diagram
+
+```
+[ USER BROWSER ] ── (Click Scan) ──► [ Scanner.jsx ]
+                                           │
+                                           │ HTTP POST /api/upload
+                                           ▼
+                                    [ app.py ] ──► [ core/validator.py ]
+                                           │             (Magic Bytes & Size Check)
+                                           │ HTTP POST /api/detect
+                                           ▼
+                                  [ core/detector.py ]
+                                           │
+               ┌───────────────────────────┼───────────────────────────┐
+               ▼                           ▼                           ▼
+    [ core/preprocessing.py ]   [ core/models/*.py ]       [ core/gradcam.py ]
+    (MTCNN Face Extraction)     (XceptionNet, EffNet, ViT) (Red/Yellow Proof Heatmap)
+               │                           │                           │
+               └───────────────────────────┼─────────────────────────┘
+                                           ▼
+                                 [ core/ensemble.py ]
+                                 (Soft-Voting Algorithm)
+                                           │
+                                           ▼
+                                    [ core/db.py ] ──► [ data/history.db ]
+                                           │
+                                           ▼
+[ Scanner.jsx ] ◄── (JSON Response) ── [ app.py ]
+(Renders REAL/FAKE Verdict & Heatmap Proof)
+```
+
+---
+
+## 🛠️ Complete 5-Phase Execution Sequence
+
+### 🟢 Phase 1: Frontend User Interaction (`frontend/src/`)
+1. **Routing**: `App.jsx` app layout aur pages (`/`, `/history`, `/metrics`) manage karta hai.
+2. **File Selection**: User `Scanner.jsx` upload box mein photo/video drop karta hai. `pickFile()` format (`JPEG/PNG/MP4/AVI`) aur size limit check karta hai.
+
+---
+
+### 🔵 Phase 2: API Gateway & File Security (`app.py` & `core/validator.py`)
+1. **Upload Call**: "Scan" button dabane par `Scanner.jsx` `POST /api/upload` request `app.py` ko bhejta hai.
+2. **Security Inspection**: `app.py` `core/validator.py` ko call karta hai. `sniff_extension()` file ke shuruati 64 binary bytes (**Magic Bytes**) scan karke virus/fake extension attack se bachata hai. File `uploads/` folder mein temporary save hoti hai aur unique `session_id` milti hai.
+
+---
+
+### 🟣 Phase 3: AI Preprocessing & Face Extraction (`core/preprocessing.py` & `core/detector.py`)
+1. **Detection Trigger**: `Scanner.jsx` `POST /api/detect` request `app.py` ko bhejta hai.
+2. **Orchestrator Trigger**: `app.py` main AI orchestrator `core/detector.py` ko call karta hai.
+3. **MTCNN Face Crop**: `core/preprocessing.py` se MTCNN algorithm media mein se chehra (face) dhoond kar background noise remove karke crop kar leta hai.
+
+---
+
+### 🔴 Phase 4: Multi-Model AI Inference, Ensemble & Grad-CAM (`core/`)
+1. **AI Models Feed**: Cropped face ko 4 AI Models (**XceptionNet**, **EfficientNet-B3**, **ViT**, **ViT-L/14**) mein feed kiya jata hai (`core/models/` + `models/*.pt`).
+2. **Grad-CAM Proof**: `core/gradcam.py` chehre ke fake parts ko highlight karne ke liye **Red/Yellow Heatmap Image** (`heatmap.png`) generate karta hai.
+3. **Ensemble Soft-Voting**: `core/ensemble.py` 4 models ke individual scores par **Weighted Soft-Voting Algorithm** chala kar 1 final **`REAL`** ya **`FAKE`** verdict aur confidence percentage score nikaalta hai.
+
+---
+
+### 🟡 Phase 5: Database Storage & UI Result Display
+1. **Database Log**: Result `core/db.py` ke zariye SQLite database (`data/history.db`) mein save hota hai.
+2. **JSON Response**: `app.py` final JSON response `Scanner.jsx` ko bhejta hai.
+3. **UI Rendering**: `Scanner.jsx` screen par:
+   * Glowing Red **`FAKE`** ya Green **`REAL`** Verdict Tag dikhata hai.
+   * Animated confidence score (`0.0%` ➔ `99.4%`) counter chalata hai.
+   * 3 Visual Tabs (**Source Media**, **MTCNN Cropped Face**, aur **Grad-CAM Heatmap Proof**) render kar deta hai!
+
+---
+
+## 🎯 Code Study Order (Konsi File Pehle Pardhein?):
+
+1. **File 1**: [frontend/src/components/Scanner.jsx](file:///d:/Final%20Fyp/deepfake-detector/frontend/src/components/Scanner.jsx) ➔ Upload Card & User Action (`pickFile`, `detect`, `renderResult`)
+2. **File 2**: [app.py](file:///d:/Final%20Fyp/deepfake-detector/app.py) ➔ Backend API Server Gateway (`/api/upload`, `/api/detect`)
+3. **File 3**: [core/validator.py](file:///d:/Final%20Fyp/deepfake-detector/core/validator.py) ➔ Security & Magic Bytes Check (`sniff_extension`, `FileValidator`)
+4. **File 4**: [core/preprocessing.py](file:///d:/Final%20Fyp/deepfake-detector/core/preprocessing.py) ➔ MTCNN Face Crop (`detect_face`)
+5. **File 5**: [core/detector.py](file:///d:/Final%20Fyp/deepfake-detector/core/detector.py) ➔ AI Master Orchestrator (`detect_image`, `detect_video`)
+6. **File 6**: [core/ensemble.py](file:///d:/Final%20Fyp/deepfake-detector/core/ensemble.py) & [core/gradcam.py](file:///d:/Final%20Fyp/deepfake-detector/core/gradcam.py) ➔ Voting & Heatmap Proof
 
 ---
 
