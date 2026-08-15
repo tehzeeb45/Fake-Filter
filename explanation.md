@@ -1201,6 +1201,373 @@ Yeh image float tensor ko wapas uint8 RGB array $[224, 224, 3]$ (0..255) image m
 
 ---
 
+---
+
+## 🌐 Main Backend Web Gateway: `app.py` (Flask Server & API Controller)
+
+`app.py` poore system ka **Main Backend Web Server (Flask API Gateway Controller)** hai. Yeh React Frontend (`frontend/dist`) aur PyTorch AI Engine (`core/detector.py`, `core/validator.py`, `core/db.py`) ke darmiyan **Central Bridge** ka kaam karta hai.
+
+---
+
+### 💡 High-Level Overview (Pehle Aasan Alfaz Mein):
+
+`app.py` ke 4 main responsibilities hain:
+1. **Background Model Loading**: Server start hote hi PyTorch AI models (**XceptionNet**, **EfficientNet-B3**, **ViT**) ko non-blocking background thread mein load karta hai.
+2. **REST API Endpoints**: Frontend se aane wali Upload (`/api/upload`), Detection (`/api/detect`), Status (`/api/status`), History (`/api/history`), aur Hardware Device Switch (`/api/device`) requests ko handle karta hai.
+3. **Session Expiry Sweeper (FR-20)**: Har 5 minute baad 1 ghante se purani temporary upload files ko auto-delete karke disk space clean rakhta hai.
+4. **Frontend Serving**: Compiled React UI Single Page Application (`index.html`) aur Grad-CAM Heatmap images serve karta hai.
+
+---
+
+### 💻 Complete Functions & Routes Breakdown in `app.py`:
+
+---
+
+### 1. `start_loading()` & `_load()` — Non-Blocking Model Warmup ([app.py: L70-L90](file:///d:/Final%20Fyp/deepfake-detector/app.py#L70-L90))
+
+#### Complete Code Block:
+```python
+def start_loading():
+    """Load all model weights asynchronously at startup (kept non-blocking)."""
+    global _loading, _detector, _detector_error
+
+    if _detector is not None or _detector_error or _loading:
+        return
+    _loading = True
+
+    def _load():
+        global _detector, _detector_error, _loading, _load_stage
+        try:
+            _load_stage = "Loading model weights (first load can take a few minutes)…"
+            _detector = Detector(CFG, device_override=_custom_device)
+            _load_stage = "Ready"
+        except Exception as exc:  # noqa: BLE001 - surfaced via /api/status
+            _detector_error = f"{type(exc).__name__}: {exc}"
+        finally:
+            _loading = False
+
+    threading.Thread(target=_load, daemon=True).start()
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh function Flask web server start hone par background daemon thread initiate karta hai jo PyTorch AI Models bundle (`Detector(CFG)`) ko memory (GPU/RAM) mein load karta hai. Thread asynchronous hone ki wajah se web server foran start ho jata hai aur UI block nahi hota.
+
+---
+
+### 2. `_cleanup()`, `_sweep()` & `register_sweeper()` — Session Expiry Sweeper (FR-20) ([app.py: L92-L123](file:///d:/Final%20Fyp/deepfake-detector/app.py#L92-L123))
+
+#### Complete Code Block:
+```python
+def _cleanup():
+    """FR-20: expire session files older than the session TTL (1 hour)."""
+    now = time.time()
+    with sessions_lock:
+        expired = [sid for sid, rec in sessions.items()
+                   if rec["expires_at"] <= now]
+        for sid in expired:
+            sessions.pop(sid, None)
+            shutil.rmtree(sessions.get(sid, {}).get("dir") or UPLOAD_ROOT / sid,
+                          ignore_errors=True)
+
+    if not UPLOAD_ROOT.is_dir():
+        return
+    for d in list(UPLOAD_ROOT.iterdir()):
+        if d.is_dir():
+            try:
+                stale = time.time() - d.stat().st_mtime > APP_SESSION_EXPIRY
+            except OSError:
+                stale = False
+            if stale:
+                shutil.rmtree(d, ignore_errors=True)
+
+def _sweep():
+    while True:
+        time.sleep(300)
+        _cleanup()
+
+def register_sweeper():
+    threading.Thread(target=_sweep, daemon=True).start()
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh background thread Functional Requirement **FR-20** (Session File Cleanup) ko enforce karta hai. Har 300 seconds (5 minutes) baad `_cleanup()` run hota hai jo 1 ghante (`APP_SESSION_EXPIRY = 3600s`) se purani temporary upload session directories ko `uploads/` folder se hard-delete kar deta hai.
+
+---
+
+### 3. `api_config()` — Upload Limits Endpoint (`GET /api/config`) ([app.py: L199-L206](file:///d:/Final%20Fyp/deepfake-detector/app.py#L199-L206))
+
+#### Complete Code Block:
+```python
+@app.route("/api/config")
+def api_config():
+    """Client-side upload limits used by the React UI."""
+    return jsonify({
+        "maxImageMb": int(CFG.uploads.max_image_size_mb),
+        "maxVideoMb": int(CFG.uploads.max_video_size_mb),
+        "expiryHours": APP_SESSION_EXPIRY // 3600,
+    })
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh HTTP GET API endpoint React frontend ko `config.yaml` se load shuda file upload limits return karta hai (`maxImageMb: 10`, `maxVideoMb: 100`, `expiryHours: 1`). Frontend `Scanner.jsx` is API call se dynamic limits read karta hai.
+
+---
+
+### 4. `api_status()` — Readiness Probe Endpoint (`GET /api/status`) ([app.py: L209-L227](file:///d:/Final%20Fyp/deepfake-detector/app.py#L209-L227))
+
+#### Complete Code Block:
+```python
+@app.route("/api/status")
+def api_status():
+    models = []
+    if _detector:
+        b = _detector.bundle
+        models = [n for n, m in (("cnn", b.cnn),
+                             ("efficientnet", b.effnet),
+                             ("vit", b.vit),
+                             ("vit_l14", b.vit_l14))
+                  if m is not None]
+    return jsonify({
+        "ready": _detector is not None,
+        "loading": _loading,
+        "loading_stage": _load_stage,
+        "error": _detector_error,
+        "device": str(_detector.device) if _detector else _resolved_device(),
+        "requested_device": _resolved_device(),
+        "models_loaded": models,
+    })
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh readiness status endpoint hai jo React frontend dwara har 1.2s baad poll kiya jata hai. Yeh JSON mein batata hai ke models ready hain ya load ho rahe hain (`ready: true/false`), currently loading stage kya hai, aur konsa hardware (`cpu` ya `cuda`) active hai.
+
+---
+
+### 5. `api_upload()` — Media Input Validator & Session Store (`POST /api/upload`) ([app.py: L230-L267](file:///d:/Final%20Fyp/deepfake-detector/app.py#L230-L267))
+
+#### Complete Code Block:
+```python
+@app.route("/api/upload", methods=["POST"])
+def api_upload():
+    """UC-01/UC-02: validate the upload and store it under a session."""
+    if _detector is None:
+        if _detector_error:
+            return _error("MODEL_ERROR", _detector_error, 503)
+        return _error("LOADING", "Models are still warming up. Please retry.", 503)
+
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return _error("NO_FILE", "No file selected.", 400)
+
+    data = file.read()
+    try:
+        meta = validator.validate(file.filename, data)
+    except ValidationError as exc:
+        return _error("INVALID_FILE", str(exc), 422)
+
+    rec = _new_session()
+    rec["media"] = meta
+    dir_ = rec["dir"]
+    dir_.mkdir(parents=True, exist_ok=True)
+
+    stem = "".join(c if c.isalnum() or c in "._-" else "_"
+                   for c in Path(file.filename).stem)[:80] or "upload"
+    stored = f"{stem}.{meta['extension']}"
+    (dir_ / stored).write_bytes(data)
+
+    return jsonify({
+        "session_id": rec["id"],
+        "media": {
+            "type": meta["kind"], "extension": meta["extension"],
+            "mime": meta["mime"], "size": meta["size"],
+            "original_name": file.filename,
+        },
+        "media_url": f"/media/{rec['id']}/{stored}",
+        "expires_in": APP_SESSION_EXPIRY,
+    })
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh media file upload handler (UC-01, UC-02) hai. User jab file upload karta hai, yeh `validator.validate()` ([core/validator.py](file:///d:/Final%20Fyp/deepfake-detector/core/validator.py)) se Magic Bytes signature check aur size limits (10MB/100MB) verify karta hai. Fail hone par 422 error throw karta hai, aur pass hone par `uploads/<session_id>/` folder mein file write karke unique `session_id` return karta hai.
+
+---
+
+### 6. `api_detect()` — AI Detection Pipeline Orchestrator (`POST /api/detect`) ([app.py: L270-L318](file:///d:/Final%20Fyp/deepfake-detector/app.py#L270-L318))
+
+#### Complete Code Block:
+```python
+@app.route("/api/detect", methods=["POST"])
+def api_detect():
+    """UC-03/UC-04: run the ensemble pipeline and return the verdict."""
+    if _detector is None:
+        return _error("NOT_READY", "Detection service is not ready yet.", 503)
+
+    payload = request.get_json(silent=True) or {}
+    sid = payload.get("session_id", "")
+    rec = sessions.get(sid)
+    if not rec:
+        return _error("BAD_SESSION", "Upload session expired. Please re-upload.", 404)
+    dir_ = rec.get("dir")
+    if not dir_ or not dir_.is_dir():
+        return _error("BAD_SESSION", "Upload session expired. Please re-upload.", 404)
+
+    media = rec.get("media")
+    if not media:
+        return _error("NO_MEDIA", "No media uploaded in this session.", 400)
+
+    stored = _find_media(dir_, media)
+    if stored is None:
+        return _error("NO_MEDIA", "Media file is missing from the session.", 500)
+
+    try:
+        if media["kind"] == "video":
+            result = _detector.detect_video(stored, dir_,
+                                            original_name=media["original_name"])
+        else:
+            result = _detector.detect_image(stored, dir_,
+                                            original_name=media["original_name"])
+    except NoFaceError as exc:
+        return _error("NO_FACE", str(exc), 422)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("inference failed")
+        return _error("INTERNAL",
+                      "An internal error occurred. Please try again.", 500)
+
+    result["session_id"] = sid
+    result["heatmap_url"] = f"/media/{sid}/{result['heatmap_path']}"
+    result["face_url"] = f"/media/{sid}/{result['face_crop_path']}"
+    result["media_url"] = f"/media/{sid}/{stored.name}"
+
+    with sessions_lock:
+        sessions[sid]["result"] = result
+
+    scan_id = history.add_scan(result)
+    result["history_id"] = scan_id
+
+    return jsonify({"ok": True, "result": result})
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh core AI Detection API Endpoint (UC-03 Image, UC-04 Video) hai. Yeh `session_id` se stored file read karke `_detector.detect_image()` ya `_detector.detect_video()` ([core/detector.py](file:///d:/Final%20Fyp/deepfake-detector/core/detector.py)) ko invoke karta hai. Detection complete hone par MTCNN face crop, Grad-CAM heatmap proof URL, model-wise voting scores, aur REAL/FAKE verdict JSON return karta hai, aur record ko SQLite Database (`history.add_scan()`) mein log kar deta hai.
+
+---
+
+### 7. `api_device_switch()` — Live Hardware Device Switcher (`POST /api/device`) ([app.py: L410-L451](file:///d:/Final%20Fyp/deepfake-detector/app.py#L410-L451))
+
+#### Complete Code Block:
+```python
+@app.route("/api/device", methods=["POST"])
+def api_device_switch():
+    """Switch inference device (cpu | cuda | auto) and reload the models."""
+    global _custom_device, _detector, _detector_error, _loading, _load_stage
+
+    payload = request.get_json(silent=True) or {}
+    device = str(payload.get("device", "")).lower()
+    if device not in ("cpu", "cuda", "auto"):
+        return _error("BAD_DEVICE", "device must be 'cpu', 'cuda' or 'auto'.", 400)
+
+    if _detector is not None and str(_detector.device) == _resolved_device() and \
+            device == (_custom_device or "auto"):
+        return jsonify({"ok": True, "device": str(_detector.device),
+                        "reload": False})
+
+    if device == "auto":
+        _custom_device = None
+    else:
+        _custom_device = device
+
+    if _detector is None and _loading:
+        return jsonify({"ok": True, "device": _resolved_device(),
+                        "reload": True, "loading": True})
+
+    _detector, _detector_error, _loading = None, None, True
+    _load_stage = f"Switching to {_resolved_device()}…"
+
+    def _load():
+        global _detector, _detector_error, _loading, _load_stage
+        try:
+            _load_stage = f"Loading model weights on {_resolved_device()}…"
+            _detector = Detector(CFG, device_override=_custom_device)
+            _load_stage = "Ready"
+        except Exception as exc:  # noqa: BLE001
+            _detector_error = f"{type(exc).__name__}: {exc}"
+        finally:
+            _loading = False
+
+    threading.Thread(target=_load, daemon=True).start()
+    return jsonify({"ok": True, "device": _resolved_device(),
+                    "reload": True, "loading": True})
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh API endpoint user ko React UI (`Scanner.jsx`) par CPU aur GPU (CUDA) buttons click kar ke runtime par hardware execution device live switch karne ki ijazat deta hai. Switch command milne par purane detector object ko unload karke naye device target par PyTorch AI models reload karta hai.
+
+---
+
+### 8. `api_history_*` — SQLite Scan History Logs CRUD (`GET/DELETE /api/history`) ([app.py: L372-L408](file:///d:/Final%20Fyp/deepfake-detector/app.py#L372-L408))
+
+#### Complete Code Block:
+```python
+@app.route("/api/history")
+def api_history_list():
+    """List saved detections (newest first), optionally filtered."""
+    limit = max(1, min(int(request.args.get("limit", 50)), 200))
+    offset = max(0, int(request.args.get("offset", 0)))
+    kind = request.args.get("kind") or None
+    verdict = request.args.get("verdict") or None
+    rows = history.list_scans(limit=limit, offset=offset,
+                               kind=kind, verdict=verdict)
+    return jsonify({
+        "items": rows,
+        "total": history.count_scans(),
+        "limit": limit,
+        "offset": offset,
+    })
+
+@app.route("/api/history/<int:scan_id>", methods=["DELETE"])
+def api_history_delete(scan_id):
+    if not history.delete_scan(scan_id):
+        return _error("NOT_FOUND", "Scan not found.", 404)
+    return jsonify({"ok": True, "deleted": scan_id})
+
+@app.route("/api/history", methods=["DELETE"])
+def api_history_clear():
+    deleted = history.clear_all()
+    return jsonify({"ok": True, "deleted": deleted})
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh routes History page ([History.jsx](file:///d:/Final%20Fyp/deepfake-detector/frontend/src/pages/History.jsx)) ke liye CRUD operations provide karti hain:
+* `GET /api/history`: SQLite database (`data/history.db`) se past scan logs (newest first) filter/pagination ke sath read karta hai.
+* `DELETE /api/history/<id>`: Specific single scan record delete karta hai.
+* `DELETE /api/history`: Tamam saved history clear kar deta hai.
+
+---
+
+### 9. `api_metrics()` — Developer Dashboard Metrics (`GET /api/metrics`) ([app.py: L356-L370](file:///d:/Final%20Fyp/deepfake-detector/app.py#L356-L370))
+
+#### Complete Code Block:
+```python
+@app.route("/api/metrics")
+def api_metrics():
+    import json
+
+    fp = METRICS_DIR / "metrics.json"
+    if not fp.is_file():
+        return _error("NO_METRICS",
+                      "No evaluation results available. Please run model evaluation first.", 404)
+    doc = json.loads(fp.read_text(encoding="utf-8"))
+    for key, row in doc.get("models", {}).items():
+        row["confusion_url"] = f"/metrics-chart/{row['chart_confusion']}"
+        row["roc_url"] = f"/metrics-chart/{row['chart_roc']}"
+    return jsonify(doc)
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh API Developer Metrics Page ([Metrics.jsx](file:///d:/Final%20Fyp/deepfake-detector/frontend/src/pages/Metrics.jsx)) ke liye `metrics/metrics.json` file se evaluation benchmark numbers (Ensemble Accuracy 98.0%, ROC-AUC 0.999) aur Confusion Matrix / ROC Curve PNG chart URLs JSON format mein return karti hai.
+
+---
+
 ## 📊 Complete Summary Table of All Project Files & Functions
 
 | File Path | Function / Class Name | Overall Responsibility / Kaam |
@@ -1235,11 +1602,21 @@ Yeh image float tensor ko wapas uint8 RGB array $[224, 224, 3]$ (0..255) image m
 | `preprocessing.py` | `FacePreprocessor._align_and_crop()` | Trigonometric eye horizontal rotation, 20% margin crop, & 224x224 resize. |
 | `preprocessing.py` | `FacePreprocessor.face_to_tensor()` | Converts uint8 HWC RGB array to float32 CHW PyTorch tensor with ImageNet normalization. |
 | `preprocessing.py` | `tensor_to_vis()` | Inverse ImageNet normalization helper for Grad-CAM overlay visualization. |
+| `app.py` | `start_loading()` | Asynchronous non-blocking background thread model warmup loader on startup. |
+| `app.py` | `_cleanup()` / `_sweep()` | FR-20 session TTL sweeper thread auto-deleting upload session files older than 1 hour. |
+| `app.py` | `api_config()` | `GET /api/config` returning 10MB/100MB file upload limits to React UI. |
+| `app.py` | `api_status()` | `GET /api/status` readiness probe returning model load state and CPU/GPU device. |
+| `app.py` | `api_upload()` | `POST /api/upload` validating raw file bytes and storing temporary session file. |
+| `app.py` | `api_detect()` | `POST /api/detect` orchestrating MTCNN, 4-model ensemble, Grad-CAM proof & SQLite logging. |
+| `app.py` | `api_device_switch()` | `POST /api/device` live switching hardware execution device (`cpu` / `cuda` / `auto`). |
+| `app.py` | `api_history_*()` | `GET/DELETE /api/history` CRUD endpoints for SQLite scan logs. |
+| `app.py` | `api_metrics()` | `GET /api/metrics` serving evaluation benchmark numbers (98% accuracy) & PNG charts. |
 | `main.jsx` | `ReactDOM.render` | Mounts root `<App />` component into HTML `#root` container. |
 
 ---
 
 *Generated for Deepfake Detection System Final Year Project (IAC, Lahore).*
+
 
 
 
