@@ -1568,10 +1568,335 @@ Yeh API Developer Metrics Page ([Metrics.jsx](file:///d:/Final%20Fyp/deepfake-de
 
 ---
 
+## 🔴 `core/gradcam.py` Module — Visual Explainability & Proof Heatmap Engine
+
+### Purpose of Module:
+Is module ka main maqsad deepfake detection results par **Visual Explainability (Grad-CAM - FR-17)** provide karna hai. Jab AI model kisi photo ko **FAKE** declare karta hai, toh yeh module XceptionNet model ki final conv layer (`conv4`) se activation gradients calculate karke chehre par tampered regions ko **Red/Yellow Color Heatmap (`heatmap.png`)** ke taur par highlight karta hai.
+
+---
+
+### 1. `compute_gradcam_heatmap()` — Saliency Heatmap Generator ([core/gradcam.py: L24-L34](file:///d:/Final%20Fyp/deepfake-detector/core/gradcam.py#L24-L34))
+
+#### Complete Code Block:
+```python
+def compute_gradcam_heatmap(cnn_model, face_tensor: torch.Tensor,
+                            device: torch.device) -> np.ndarray:
+    """0..1 saliency map for a [1, 3, 224, 224] ImageNet-normalised tensor."""
+    from pytorch_grad_cam import GradCAM
+    from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+
+    target_layer = cnn_model.grad_cam_target_layer
+    cam = GradCAM(model=cnn_model, target_layers=[target_layer])
+    grayscale = cam(input_tensor=face_tensor.to(device),
+                    targets=[ClassifierOutputTarget(0)])
+    return grayscale[0]
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh function XceptionNet model ki target conv layer (`conv4`) ko Grad-CAM engine ke sath hook karta hai aur face tensor `[1, 3, 224, 224]` ko pass karke 2D Grayscale Saliency Map ($0.0 \dots 1.0$) calculate karta hai jo AI model ke focus region (dhyan) ko represent karta hai.
+
+---
+
+### 2. `_overlay()` — JET Color Map Blending ([core/gradcam.py: L15-L21](file:///d:/Final%20Fyp/deepfake-detector/core/gradcam.py#L15-L21))
+
+#### Complete Code Block:
+```python
+def _overlay(heatmap: np.ndarray, canvas_rgb: np.ndarray,
+             alpha: float = 0.5) -> np.ndarray:
+    """Blend a 0..1 heatmap onto a 0..255 RGB image (jet colormap)."""
+    heat = np.uint8(255 * np.clip(heatmap, 0.0, 1.0))
+    jet = cv2.applyColorMap(heat, cv2.COLORMAP_JET)
+    jet = cv2.cvtColor(jet, cv2.COLOR_BGR2RGB)
+    return cv2.addWeighted(canvas_rgb, 1.0 - alpha, jet, alpha, 0)
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh function Grayscale Saliency Map ko OpenCV `COLORMAP_JET` (Red/Yellow/Blue) color palette mein convert karta hai aur `cv2.addWeighted()` ke zariye original cropped face image aur color heatmap ko 50%-50% blend kar deta hai taake chehre ke upar fake spots laal rang mein dikhayi dein.
+
+---
+
+### 3. `save_heatmap_overlay()` — Heatmap Disk Persistence ([core/gradcam.py: L37-L44](file:///d:/Final%20Fyp/deepfake-detector/core/gradcam.py#L37-L44))
+
+#### Complete Code Block:
+```python
+def save_heatmap_overlay(saliency: np.ndarray, face_rgb: np.ndarray,
+                         out_png: str | Path, alpha: float = 0.5) -> Path:
+    """Persist the Grad-CAM overlay PNG (FR-17)."""
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    overlay = _overlay(saliency, np.ascontiguousarray(face_rgb), alpha=alpha)
+    cv2.imwrite(str(out_png), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+    return out_png
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh function blended heatmap array ko hard disk par `uploads/<session_id>/heatmap.png` file ke taur par save karta hai taake React UI ([Scanner.jsx](file:///d:/Final%20Fyp/deepfake-detector/frontend/src/components/Scanner.jsx)) par **Grad-CAM Proof Tab** mein red/yellow heatmap overlay image render ho sake.
+
+---
+
+## ⚖️ `core/ensemble.py` Module — Weighted Soft-Voting Decision Engine
+
+### Purpose of Module:
+Is module ka main maqsad multimodality prediction outputs ko combine karke 1 final **`REAL`** ya **`FAKE`** verdict aur confidence percentage score ($0.0\% \dots 100.0\%$) generate karna hai (**FR-14..FR-16**). Yeh module XceptionNet, EfficientNet-B3, ViT, aur ViT-L/14 models ke individual scores ko `config.yaml` ke weights ke mutabiq weighted soft-voting se combine karta hai.
+
+---
+
+### 1. `weighted_average()` — Weighted Mean Calculator ([core/ensemble.py: L17-L27](file:///d:/Final%20Fyp/deepfake-detector/core/ensemble.py#L17-L27))
+
+#### Complete Code Block:
+```python
+def weighted_average(scores: dict[str, float], weights: dict[str, float]) -> float:
+    """Weighted mean of P(Fake) over the models actually present in `scores`."""
+    total_w = 0.0
+    acc = 0.0
+    for key, p in scores.items():
+        w = weights.get(key, 0.0)
+        acc += w * p
+        total_w += w
+    if total_w <= 0:
+        raise ValueError("ensemble: no weighted model scores provided")
+    return acc / total_w
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh function tamam active AI models ke individual fake scores (e.g. XceptionNet: 0.95, EfficientNet: 0.98, ViT: 0.92) ko unke assigned weights ke sath multiply kar ke ek single **Average Ensemble Fake Score** ($0.0 \dots 1.0$) calculate karta hai.
+
+---
+
+### 2. `decision_from_p()` — Verdict & Confidence Record Builder ([core/ensemble.py: L30-L39](file:///d:/Final%20Fyp/deepfake-detector/core/ensemble.py#L30-L39))
+
+#### Complete Code Block:
+```python
+def decision_from_p(p_fake: float, threshold: float = 0.5) -> dict:
+    """Build the final verdict + confidence record (FR-15/FR-16)."""
+    verdict = "FAKE" if p_fake >= threshold else "REAL"
+    confidence = p_fake * 100.0 if verdict == "FAKE" else (1.0 - p_fake) * 100.0
+    return {
+        "verdict": verdict,
+        "p_fake": round(float(p_fake), 4),
+        "confidence": round(float(confidence), 2),
+        "threshold": threshold,
+    }
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh function ensemble fake probability score $P_{\text{fake}}$ ko $0.5$ threshold se compare karta hai:
+* Agar $P_{\text{fake}} \ge 0.5$ ➔ Verdict **`FAKE`**, Confidence $= P_{\text{fake}} \times 100$.
+* Agar $P_{\text{fake}} < 0.5$ ➔ Verdict **`REAL`**, Confidence $= (1 - P_{\text{fake}}) \times 100$.
+
+---
+
+### 3. `Ensemble` Class — Soft-Voting Orchestrator ([core/ensemble.py: L42-L67](file:///d:/Final%20Fyp/deepfake-detector/core/ensemble.py#L42-L67))
+
+#### Complete Code Block:
+```python
+class Ensemble:
+    """Configured weighted-soft-voting helper."""
+
+    def __init__(self, cfg: Config):
+        self.threshold = float(cfg.ensemble.threshold)
+        self.image_weights = {k: float(v) for k, v in cfg.ensemble.image_weights.items()}
+        self.video_weights = {k: float(v) for k, v in cfg.ensemble.video_weights.items()}
+
+    def combine(self, scores: dict[str, float], kind: str) -> dict:
+        weights = self.video_weights if kind == "video" else self.image_weights
+        p_fake = weighted_average(scores, weights)
+        result = self.to_verdict(p_fake)
+        result["scores"] = {k: round(v, 4) for k, v in scores.items()}
+        result["disagreement"] = False
+        return result
+
+    def to_verdict(self, p_fake: float) -> dict:
+        return {
+            "verdict": "FAKE" if p_fake >= self.threshold else "REAL",
+            "p_fake": round(float(p_fake), 4),
+            "confidence": round(
+                p_fake * 100.0 if p_fake >= self.threshold else (1.0 - p_fake) * 100.0,
+                2,
+            ),
+            "threshold": self.threshold,
+        }
+```
+
+#### Class Ka Kaam (Explanation):
+Yeh class `config.yaml` se Image aur Video weights load karti hai. `combine()` method media type ke mutabiq correct weights select karke `weighted_average()` aur `to_verdict()` dwara final verdict, confidence %, aur individual model scores ka clean dictionary object assemble karta hai.
+
+---
+
+## 💾 `core/history.py` Module — SQLite Persistent Scan History Manager
+
+### Purpose of Module:
+Is module ka main maqsad tamam completed detection scans (images & videos) ki history ko **SQLite Database (`data/history.db`)** mein permanently save, retrieve, filter, aur delete karna hai. Yeh multi-threading safety ke liye RLock aur Write-Ahead Logging (`WAL`) mode use karta hai.
+
+---
+
+### 1. `_connect()` — Safe SQLite Connection Helper ([core/history.py: L43-L48](file:///d:/Final%20Fyp/deepfake-detector/core/history.py#L43-L48))
+
+#### Complete Code Block:
+```python
+def _connect(db_path: Path) -> sqlite3.Connection:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh function target directory `data/` ko verify karta hai, SQLite database `data/history.db` se connection establish karta hai, column name access (`sqlite3.Row`) active karta hai, aur high-performance WAL mode set karta hai taake simultaneous read/write operations safe aur fast hon.
+
+---
+
+### 2. `init_history()` — Database Schema Initializer ([core/history.py: L51-L56](file:///d:/Final%20Fyp/deepfake-detector/core/history.py#L51-L56))
+
+#### Complete Code Block:
+```python
+def init_history(db_path=None) -> Path:
+    """Create the schema if missing and return the resolved DB path."""
+    path = Path(db_path) if db_path else resolve("data") / "history.db"
+    with _lock, _connect(path) as conn:
+        conn.executescript(_SCHEMA)
+    return path
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh function server startup par `_SCHEMA` execute karke `scans` table aur `created_at` index create/verify karta hai taake scan results save karne ke liye database schema tayyar rahe.
+
+---
+
+### 3. `add_scan()` — Scan Log Inserter ([core/history.py: L59-L88](file:///d:/Final%20Fyp/deepfake-detector/core/history.py#L59-L88))
+
+#### Complete Code Block:
+```python
+def add_scan(record: dict, db_path=None) -> int:
+    """Insert one detection result. `record` is the API result dict."""
+    path = Path(db_path) if db_path else resolve("data") / "history.db"
+    with _lock, _connect(path) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO scans
+                (session_id, kind, original_name, verdict, confidence,
+                 p_fake, threshold, scores, frames_analyzed,
+                 media_url, face_url, heatmap_url, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record.get("session_id", ""),
+                record.get("kind", "image"),
+                record.get("original_name", ""),
+                record.get("verdict", "REAL"),
+                float(record.get("confidence", 0.0)),
+                float(record.get("p_fake", 0.0)),
+                float(record.get("threshold", 0.5)),
+                json.dumps(record.get("scores") or {}),
+                record.get("faces_analyzed"),
+                record.get("media_url", ""),
+                record.get("face_url"),
+                record.get("heatmap_url"),
+                record.get("created_at") or datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh function detection scan complete hone par final API result dictionary ko SQLite database ki `scans` table mein 1 new row ke taur par insert (save) karta hai aur unique row ID return karta hai.
+
+---
+
+### 4. `list_scans()` — Scan Logs Query & Pagination ([core/history.py: L91-L109](file:///d:/Final%20Fyp/deepfake-detector/core/history.py#L91-L109))
+
+#### Complete Code Block:
+```python
+def list_scans(limit: int = 100, offset: int = 0,
+               kind: str | None = None, verdict: str | None = None,
+               db_path=None) -> list[dict]:
+    """Return scan history rows newest-first, with the SQLite integer id."""
+    path = Path(db_path) if db_path else resolve("data") / "history.db"
+    sql = "SELECT * FROM scans WHERE 1=1"
+    params: list = []
+    if kind in ("image", "video"):
+        sql += " AND kind = ?"
+        params.append(kind)
+    if verdict in ("REAL", "FAKE"):
+        sql += " AND verdict = ?"
+        params.append(verdict)
+    sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    params += [int(limit), int(offset)]
+
+    with _lock, _connect(path) as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [_row_to_dict(r) for r in rows]
+```
+
+#### Function Ka Kaam (Explanation):
+Yeh function History page ([History.jsx](file:///d:/Final%20Fyp/deepfake-detector/frontend/src/pages/History.jsx)) ke liye database se saved scan logs newest-first order mein fetch karta hai. Is mein `kind` (`image`/`video`), `verdict` (`REAL`/`FAKE`), aur pagination (`limit`/`offset`) filters shamil hain.
+
+---
+
+### 5. `get_scan()`, `count_scans()`, `delete_scan()`, `clear_all()`, & `_row_to_dict()` ([core/history.py: L112-L148](file:///d:/Final%20Fyp/deepfake-detector/core/history.py#L112-L148))
+
+#### Complete Code Block:
+```python
+def get_scan(scan_id: int, db_path=None) -> dict | None:
+    path = Path(db_path) if db_path else resolve("data") / "history.db"
+    with _lock, _connect(path) as conn:
+        row = conn.execute("SELECT * FROM scans WHERE id = ?",
+                           (int(scan_id),)).fetchone()
+    return _row_to_dict(row) if row else None
+
+def count_scans(db_path=None) -> int:
+    path = Path(db_path) if db_path else resolve("data") / "history.db"
+    with _lock, _connect(path) as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0])
+
+def delete_scan(scan_id: int, db_path=None) -> bool:
+    path = Path(db_path) if db_path else resolve("data") / "history.db"
+    with _lock, _connect(path) as conn:
+        cur = conn.execute("DELETE FROM scans WHERE id = ?", (int(scan_id),))
+        conn.commit()
+    return cur.rowcount > 0
+
+def clear_all(db_path=None) -> int:
+    path = Path(db_path) if db_path else resolve("data") / "history.db"
+    with _lock, _connect(path) as conn:
+        cur = conn.execute("DELETE FROM scans")
+        conn.commit()
+    return int(cur.rowcount)
+
+def _row_to_dict(row: sqlite3.Row) -> dict:
+    d = {k: row[k] for k in row.keys()}
+    try:
+        d["scores"] = json.loads(d["scores"]) if d.get("scores") else {}
+    except (ValueError, TypeError):
+        d["scores"] = {}
+    return d
+```
+
+#### Function Ka Kaam (Explanation):
+* `get_scan()`: Specific ID par Single scan log fetch karta hai.
+* `count_scans()`: Total saved scans count return karta hai.
+* `delete_scan()`: Specific single scan record delete karta hai.
+* `clear_all()`: Tamam saved scan history clear kar deta hai.
+* `_row_to_dict()`: Raw SQLite row ko Python/JSON dictionary mein format karta hai.
+
+---
+
 ## 📊 Complete Summary Table of All Project Files & Functions
 
 | File Path | Function / Class Name | Overall Responsibility / Kaam |
 | :--- | :--- | :--- |
+| `history.py` | `init_history()` | Creates SQLite database `data/history.db` and `scans` table on server startup. |
+| `history.py` | `add_scan()` | Inserts completed detection scan record into SQLite database table. |
+| `history.py` | `list_scans()` | Queries saved scan history rows newest-first with kind/verdict filters & pagination. |
+| `history.py` | `delete_scan()` / `clear_all()` | Deletes a single scan record or clears all history records from SQLite database. |
+| `ensemble.py` | `weighted_average()` | Computes weighted mean P(Fake) over active model scores. |
+| `ensemble.py` | `decision_from_p()` | Determines REAL/FAKE verdict and confidence % based on 0.5 threshold. |
+| `ensemble.py` | `Ensemble.combine()` | Combines multi-model outputs for images/videos into structured verdict result. |
+| `gradcam.py` | `compute_gradcam_heatmap()` | Generates 2D grayscale saliency map from XceptionNet conv4 layer gradients. |
+| `gradcam.py` | `_overlay()` | Blends 0..1 saliency map onto face RGB image using OpenCV JET colormap (Red/Yellow/Blue). |
+| `gradcam.py` | `save_heatmap_overlay()` | Saves blended Grad-CAM heatmap PNG (`heatmap.png`) to upload session directory on disk. |
 | `App.jsx` | `App()` | Root component & client-side router between `/`, `/history`, and `/metrics`. |
 | `App.jsx` | `Landing()` | Renders complete landing page structure, topbar glass effect, & section cards. |
 | `App.jsx` | `useReveal()` | Custom Hook: Triggers scroll reveal animations when elements enter viewport. |
