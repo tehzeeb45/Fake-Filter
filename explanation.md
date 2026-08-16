@@ -37,6 +37,97 @@ This document provides a comprehensive code & architecture breakdown of the **De
 
 ---
 
+## 📋 Diagram Ke Har Box Ka Roman Urdu Mein Detail
+
+### 📦 BOX 1 — `Scanner.jsx` (User Browser)
+User website par **"Scan File"** button dabata hai. React component `Scanner.jsx` file ko `FormData` mein pack karta hai aur `POST /api/upload` request backend server (`app.py`) ko bhejta hai.
+
+---
+
+### 📦 BOX 2 — `app.py` → `core/validator.py` (Magic Bytes & Size Check)
+`app.py` file receive karne ke baad usse `core/validator.py` ke paas check karne bhejta hai. Validator mein yeh 3 kaam hote hain:
+- **File Size Check**: Image `10MB` se badi? Video `100MB` se badi? ❌ REJECT
+- **Magic Bytes Check**: File ke pehle 12 bytes read kiye jate hain. `FF D8 FF` = JPEG ✅, `89 50 4E` = PNG ✅, `66 74 79` = MP4 ✅. Koi aur bytes mile toh ❌ REJECT
+- **Extension Match**: File ka extension (`.jpg`, `.mp4`) aur actual content match karte hain?
+
+✅ Sab pass hone par file `uploads/<session_id>/` mein save hoti hai aur unique `session_id` wapis bheja jata hai.
+
+---
+
+### 📦 BOX 3 — `core/detector.py` (Master AI Orchestrator)
+`POST /api/detect` call aane par `app.py`, `detector.py` ko activate karta hai. Yeh poori AI pipeline ko coordinate karta hai — neechay ke teen modules is ke andar chalte hain:
+
+---
+
+### 📦 BOX 4 — `core/preprocessing.py` (MTCNN Face Extraction)
+`detector.py` is module ko pehle call karta hai. Yahan yeh 5 steps hote hain:
+1. **MTCNN** algorithm poori image scan karke chehra dhoondta hai
+2. Confidence `>= 95%` hona zaruri hai warna error aata hai
+3. Aankhon ko detect karke chehra **horizontal level** par rotate kiya jata hai
+4. Face ke around **30% margin** add karke crop hoti hai
+5. Image `224 × 224` pixels par resize hoti hai
+6. **ImageNet normalization** se Tensor `[1, 3, 224, 224]` banta hai — yeh AI models ki input hai
+
+---
+
+### 📦 BOX 5 — `core/models/*.py` (XceptionNet, EffNet, ViT)
+Preprocessed face tensor in 4 pre-loaded AI models mein jata hai:
+
+| Model | File | Output |
+|:---|:---|:---|
+| XceptionNet | `cnn_xception.py` | P(Fake) = 0.97 |
+| EfficientNet-B3 | `cnn_efficientnet.py` | P(Fake) = 0.99 |
+| ViT | `vit_community.py` | P(Fake) = 0.95 |
+| ViT-L/14 | `vit_lnclip.py` | P(Fake) = 0.98 |
+
+Har model **Fake hone ki probability** (0.0 se 1.0) return karta hai.
+
+---
+
+### 📦 BOX 6 — `core/gradcam.py` (Red/Yellow Proof Heatmap)
+Models ke sath parallel mein `gradcam.py` XceptionNet ke **conv4 layer** se gradients compute karta hai:
+1. `compute_gradcam_heatmap()` → `[224, 224]` grayscale saliency map banta hai
+2. `_overlay()` → JET colormap (red = most fake, blue = least fake) face image par blend hoti hai
+3. `save_heatmap_overlay()` → Final heatmap `uploads/<session_id>/heatmap.png` save hoti hai
+
+---
+
+### 📦 BOX 7 — `core/ensemble.py` (Soft-Voting Algorithm)
+Char models ke scores `ensemble.py` mein aate hain:
+```
+p_fake = (0.97 × w_cnn + 0.99 × w_effnet + 0.95 × w_vit + 0.98 × w_vitl)
+         ÷ (w_cnn + w_effnet + w_vit + w_vitl)
+       = 0.9725  →  >= 0.5  →  VERDICT = "FAKE"
+       confidence = 0.9725 × 100 = 97.25%
+```
+
+---
+
+### 📦 BOX 8 — `core/history.py` → `data/history.db` (Database Save)
+Final result ko `add_scan()` function SQLite database mein permanent save karta hai:
+- Verdict, Confidence, P(Fake), Model Scores (JSON), Heatmap URL, Created At timestamp
+
+---
+
+### 📦 BOX 9 — `app.py` → `Scanner.jsx` (JSON Response)
+`app.py` final JSON response bhejta hai:
+```json
+{
+  "verdict": "FAKE",
+  "confidence": 97.25,
+  "p_fake": 0.9725,
+  "scores": {"cnn": 0.97, "efficientnet": 0.99, "vit": 0.95},
+  "face_url": "/media/sid/face_crop.png",
+  "heatmap_url": "/media/sid/heatmap.png"
+}
+```
+`Scanner.jsx` yeh data receive karke screen par:
+- 🔴 Glowing **FAKE** badge (ya 🟢 **REAL**) dikhata hai
+- Confidence counter `0%` se `97.25%` animate hota hai
+- 3 Tabs render hote hain: **Source**, **Face Crop**, **Heatmap Proof**
+
+---
+
 ## 🛠️ Complete 5-Phase Execution Sequence
 
 ### 🟢 Phase 1: Frontend User Interaction (`frontend/src/`)
