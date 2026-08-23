@@ -1,10 +1,10 @@
-"""Ensemble weighted-soft-voting tests (FR-14..FR-16).
+"""Ensemble soft-voting tests for 4 new DeepShield models (FR-14..FR-16).
 
-Active lineups (config ensemble.image_weights / video_weights):
-  images:  cnn (XceptionNet), efficientnet, vit
-  videos:  efficientnet, vit, vit_l14
-Retired models (dima806 ViT-B/16, ResNet18-BiLSTM) have weight 0.0 and never
-vote.
+Active models in config:
+  - new_xception
+  - new_efficientnet
+  - new_vit_small
+  - new_vit_large_clip
 """
 from __future__ import annotations
 
@@ -24,53 +24,60 @@ def run(scores, kind):
     return ENS.combine(dict(scores), kind)
 
 
-def test_image_votes_use_only_cnn_effnet_vit():
-    base = run({"cnn": 0.1, "efficientnet": 0.1, "vit": 0.1}, "image")
+def test_image_votes_all_4_models():
+    base = run({
+        "new_xception": 0.1,
+        "new_efficientnet": 0.1,
+        "new_vit_small": 0.1,
+        "new_vit_large_clip": 0.1
+    }, "image")
     assert base["verdict"] == "REAL"
-    # Retired/other models must not move the image vote at all.
-    padded = run({"cnn": 0.1, "efficientnet": 0.1, "vit": 0.1,
-                  "vit_l14": 0.99, "lstm": 0.99, "vit_b16": 0.99}, "image")
-    assert abs(base["p_fake"] - padded["p_fake"]) < 1e-9
+    assert abs(base["p_fake"] - 0.1) < 1e-6
 
 
-def test_video_votes_use_only_effnet_vit_vitl14():
-    base = run({"efficientnet": 0.9, "vit": 0.9, "vit_l14": 0.9}, "video")
+def test_video_votes_all_4_models():
+    base = run({
+        "new_xception": 0.9,
+        "new_efficientnet": 0.9,
+        "new_vit_small": 0.9,
+        "new_vit_large_clip": 0.9
+    }, "video")
     assert base["verdict"] == "FAKE"
-    padded = run({"efficientnet": 0.9, "vit": 0.9, "vit_l14": 0.9,
-                  "cnn": 0.01, "lstm": 0.99, "vit_b16": 0.99}, "video")
-    assert abs(base["p_fake"] - padded["p_fake"]) < 1e-9
+    assert abs(base["p_fake"] - 0.9) < 1e-6
 
 
-def test_single_strong_fake_vote_is_diluted():
-    # Image lineup: one 0.99 vote next to two 0.05s -> weighted mean '0.36' -> REAL.
-    r = run({"cnn": 0.05, "efficientnet": 0.05, "vit": 0.99}, "image")
-    assert abs(r["p_fake"] - 0.3633) < 1e-3
-
-
-def test_straddle_stays_real():
-    # A single marginal 0.501 vote next to ~0.05 votes -> REAL, no INCONCLUSIVE.
-    r = run({"cnn": 0.501, "efficientnet": 0.2036, "vit": 0.0531}, "image")
+def test_single_strong_fake_vote_is_averaged():
+    # 4 models: one 0.90 vote, three 0.10 votes -> mean = (0.90 + 0.10 + 0.10 + 0.10)/4 = 0.30 -> REAL
+    r = run({
+        "new_xception": 0.90,
+        "new_efficientnet": 0.10,
+        "new_vit_small": 0.10,
+        "new_vit_large_clip": 0.10
+    }, "image")
+    assert abs(r["p_fake"] - 0.30) < 1e-3
     assert r["verdict"] == "REAL"
-    assert r["disagreement"] is False
 
 
 def test_agreement_fake_image():
-    r = run({"cnn": 0.9, "efficientnet": 0.87, "vit": 0.92}, "image")
+    r = run({
+        "new_xception": 0.85,
+        "new_efficientnet": 0.80,
+        "new_vit_small": 0.75,
+        "new_vit_large_clip": 0.90
+    }, "image")
     assert r["verdict"] == "FAKE"
     assert r["disagreement"] is False
 
 
 def test_agreement_fake_video():
-    r = run({"efficientnet": 0.8, "vit": 0.7, "vit_l14": 0.95}, "video")
+    r = run({
+        "new_xception": 0.70,
+        "new_efficientnet": 0.80,
+        "new_vit_small": 0.65,
+        "new_vit_large_clip": 0.85
+    }, "video")
     assert r["verdict"] == "FAKE"
     assert r["disagreement"] is False
-
-
-def test_all_video_weights_are_equal():
-    # Video lineup has three weight-1.0 members -> p_fake is a plain mean.
-    r = run({"efficientnet": 0.2, "vit": 0.7, "vit_l14": 0.0}, "video")
-    assert abs(r["p_fake"] - 0.3) < 1e-9
-    assert r["verdict"] == "REAL"
 
 
 if __name__ == "__main__":

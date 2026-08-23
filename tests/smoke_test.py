@@ -1,8 +1,8 @@
-""">End-to-end pipeline smoke test (UC-03 image, UC-04 video).
+""">End-to-end pipeline smoke test for 4 DeepShield-trained AI models (UC-03 image, UC-04 video).
 
 Verifies the full request path: upload validation (FR-01/FR-02) -> face
-detection (FR-06..FR-08) -> XceptionNet/EfficientNet-B3/ViT/ViT-L/14
-inference -> weighted ensemble (FR-14..FR-16) -> Grad-CAM artifacts (FR-17).
+detection (FR-06..FR-08) -> 4 New AI Models (Xception, EfficientNet-B3, ViT-Small, ViT-Large/CLIP)
+inference -> soft-voting ensemble (FR-14..FR-16) -> Grad-CAM artifacts (FR-17).
 
 Run:  python tests/smoke_test.py
 """
@@ -52,11 +52,8 @@ def t_image_detect():
     assert r["kind"] == "image"
     assert r["verdict"] in ("REAL", "FAKE")
     assert 0.0 <= r["p_fake"] <= 1.0
-    for key in ("cnn", "efficientnet", "vit"):
+    for key in ("new_xception", "new_efficientnet", "new_vit_small", "new_vit_large_clip"):
         assert r["scores"].get(key) is not None, f"missing {key} score"
-    # Retired/other lineups: ViT-L/14 does not vote on images.
-    assert "vit_l14" not in r["scores"], "ViT-L/14 must not vote on images"
-    assert r["scores"].get("lstm") is None
     assert (ART / r["heatmap_path"]).is_file()
     assert (ART / r["face_crop_path"]).is_file()
     assert r["faces_analyzed"] == 1
@@ -66,12 +63,8 @@ def t_video_detect():
     r = D.detect_video(VIDEO, ART, original_name=VIDEO.name)
     assert r["kind"] == "video"
     assert r["verdict"] in ("REAL", "FAKE")
-    # Only EffNet-B3 + ViT + ViT-L/14 vote on video; the CNN, the retired
-    # dima806 ViT-B/16 and the BiLSTM do not.
-    for key in ("efficientnet", "vit", "vit_l14"):
+    for key in ("new_xception", "new_efficientnet", "new_vit_small", "new_vit_large_clip"):
         assert r["scores"].get(key) is not None, f"missing {key} score"
-    assert "cnn" not in r["scores"], "XceptionNet must not vote on video"
-    assert "lstm" not in r["scores"], "BiLSTM must not vote on video"
     assert (ART / r["heatmap_path"]).is_file()
     assert (ART / r["face_crop_path"]).is_file()
     assert 0 < r["faces_analyzed"] <= int(CFG.preprocessing.max_frames)
@@ -83,8 +76,8 @@ if __name__ == "__main__":
     ART.mkdir(parents=True, exist_ok=True)
     check("FR-01/FR-02 upload-validation accepted fixtures", t_image_uploads)
     check("FR-01/FR-02 upload-validation accepted video", t_video_uploads)
-    check("UC-03 image pipeline (XceptionNet+EffNet-B3+ViT+Grad-CAM)", t_image_detect)
-    check("UC-04 video pipeline (EffNet-B3+ViT+ViT-L/14)", t_video_detect)
+    check("UC-03 image pipeline (4 New Models + Soft Voting + Grad-CAM)", t_image_detect)
+    check("UC-04 video pipeline (4 New Models + Top-K Pooling + Soft Voting)", t_video_detect)
 
     print(f"\nsmoke: {sum(checks)}/{len(checks)} checks passed")
     sys.exit(0 if all(checks) else 1)

@@ -1,15 +1,21 @@
-"""Model wrappers - spatial CNNs (XceptionNet, EfficientNet-B3), ViT (B/16),
-and Temporal (ResNet18-BiLSTM).
+"""Model wrappers — 4 new DeepShield-trained models:
+    - NewXceptionNet    (timm legacy_xception, 2-class)
+    - NewEfficientNetB3 (torchvision efficientnet_b3, 2-class)
+    - NewViTSmall       (timm vit_small_patch16_224, 2-class)
+    - NewViTLargeClip   (timm vit_large_patch14_clip_224, 2-class)
 
-Weight provenance (FF++ C23 checkpoints, hosted on the user's Hugging Face):
-  - Khubaib7/deepfake-models  (xception_weights.pt, cnn_lstm_weights.pth, efficientnet_weights.pt)
-  - dima806/deepfake_vs_real_image_detection  (ViT-B/16, transformers-native)
+All trained on the DeepShield NPZ dataset with video-level split and
+equal-weight soft voting ensemble.
+
+Legacy wrappers (cnn_xception, cnn_efficientnet, vit_community, vit_lnclip,
+vit_vision, lstm_temporal) are retained on disk but not used by the new
+ModelBundle.
 """
 from __future__ import annotations
 
 import torch
 
-from . import cnn_efficientnet, cnn_xception, lstm_temporal, vit_lnclip, vit_community, vit_vision
+from . import new_xception, new_efficientnet, new_vit_small, new_vit_large_clip
 
 
 def get_device(value: str = "auto") -> torch.device:
@@ -22,45 +28,36 @@ def get_device(value: str = "auto") -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def load_model(cfg, name: str):
-    """Load a single model by short name: 'cnn' | 'effnet' | 'vit' | 'vit_l14'."""
-    if name == "cnn":
-        return cnn_xception.load_cnn(cfg)
-    if name == "effnet":
-        return cnn_efficientnet.load_effnet(cfg)
-    if name == "vit":
-        return vit_community.load_community_vit(cfg)
-    if name == "vit_l14":
-        return vit_lnclip.load_lnclip(cfg)
-    raise ValueError(f"unknown model '{name}'")
-
-
 class ModelBundle:
-    """Container holding the loaded Xception / EfficientNet / ViT / ViT-L/14
-    models + device. Retired wrappers (dima806 ViT-B/16, BiLSTM) are simply
-    never constructed."""
+    """Container for the 4 new DeepShield-trained models + device."""
 
-    def __init__(self, cnn=None, effnet=None, vit=None, vit_l14=None, device=None):
-        self.cnn = cnn
-        self.effnet = effnet
-        self.vit = vit
-        self.vit_l14 = vit_l14
+    def __init__(self,
+                 xception=None,
+                 efficientnet=None,
+                 vit_small=None,
+                 vit_large_clip=None,
+                 device=None):
+        self.xception = xception
+        self.efficientnet = efficientnet
+        self.vit_small = vit_small
+        self.vit_large_clip = vit_large_clip
         self.device = device
 
     def eval_all(self):
-        for m in (self.cnn, self.effnet, self.vit, self.vit_l14):
+        for m in (self.xception, self.efficientnet,
+                  self.vit_small, self.vit_large_clip):
             if m is not None:
                 m.eval()
 
     def __repr__(self):
         parts = []
-        if self.cnn is not None:
-            parts.append(f"cnn={type(self.cnn).__name__}")
-        if self.effnet is not None:
-            parts.append(f"effnet={type(self.effnet).__name__}")
-        if self.vit is not None:
-            parts.append(f"vit={type(self.vit).__name__}")
-        if self.vit_l14 is not None:
-            parts.append(f"vit_l14={type(self.vit_l14).__name__}")
+        if self.xception is not None:
+            parts.append(f"xception={type(self.xception).__name__}")
+        if self.efficientnet is not None:
+            parts.append(f"efficientnet={type(self.efficientnet).__name__}")
+        if self.vit_small is not None:
+            parts.append(f"vit_small={type(self.vit_small).__name__}")
+        if self.vit_large_clip is not None:
+            parts.append(f"vit_large_clip={type(self.vit_large_clip).__name__}")
         parts.append(f"device={self.device}")
         return f"ModelBundle({', '.join(parts)})"

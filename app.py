@@ -211,11 +211,12 @@ def api_status():
     models = []
     if _detector:
         b = _detector.bundle
-        models = [n for n, m in (("cnn", b.cnn),
-                             ("efficientnet", b.effnet),
-                             ("vit", b.vit),
-                             ("vit_l14", b.vit_l14))
-                  if m is not None]
+        models = [n for n, m in (
+                     ("new_xception",       b.xception),
+                     ("new_efficientnet",   b.efficientnet),
+                     ("new_vit_small",      b.vit_small),
+                     ("new_vit_large_clip", b.vit_large_clip),
+                  ) if m is not None]
     return jsonify({
         "ready": _detector is not None,
         "loading": _loading,

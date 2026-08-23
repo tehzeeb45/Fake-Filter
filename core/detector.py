@@ -1,7 +1,13 @@
 """Detection pipeline orchestrator (UC-03 image, UC-04 video).
 
-Coordinates preprocessing -> CNN/ViT/LSTM inference -> ensemble -> Grad-CAM
-and returns a SRS-compliant result document (DETECTION_RESULT).
+Coordinates preprocessing -> 4-model ensemble inference (soft voting) ->
+Grad-CAM and returns a SRS-compliant result document (DETECTION_RESULT).
+
+New models (DeepShield-trained, equal-weight soft voting):
+  - new_xception       (timm legacy_xception, 2-class)
+  - new_efficientnet   (torchvision efficientnet_b3, 2-class)
+  - new_vit_small      (timm vit_small_patch16_224, 2-class)
+  - new_vit_large_clip (timm vit_large_patch14_clip_224, 2-class)
 """
 from __future__ import annotations
 
@@ -43,36 +49,59 @@ class Detector:
     @staticmethod
     def _load_bundle(cfg: Config, device_override: str | None = None) -> ModelBundle:
         from concurrent.futures import ThreadPoolExecutor
-        from .models import (cnn_efficientnet, cnn_xception, lstm_temporal,
-                             vit_community, vit_lnclip, vit_vision)
+        from .models import (new_xception, new_efficientnet,
+                             new_vit_small, new_vit_large_clip)
 
         device = get_device(device_override or cfg.models.device)
-        # Only models with a positive weight in either kind are loaded; the
-        # retired ones (ViT-B/16, ResNet18-BiLSTM) stay on disk untouched.
+
+        # Determine which of the 4 new models are active (weight > 0)
         active = {
-            k for k in set(cfg.ensemble.image_weights) | set(cfg.ensemble.video_weights)
+            k for k in (
+                set(cfg.ensemble.image_weights) | set(cfg.ensemble.video_weights)
+            )
             if cfg.ensemble.image_weights.get(k, 0.0) > 0
             or cfg.ensemble.video_weights.get(k, 0.0) > 0
         }
+
         loaders = {
-            "cnn": lambda: cnn_xception.load_cnn(cfg, device=device),
-            "efficientnet": lambda: cnn_efficientnet.load_effnet(cfg, device=device),
-            "vit": lambda: vit_community.load_community_vit(cfg, device=device),
-            "vit_l14": lambda: vit_lnclip.load_lnclip(cfg, device=device),
-            "lstm": lambda: lstm_temporal.load_temporal(cfg, device=device),
-            "vit_b16": lambda: vit_vision.load_vit(cfg, device=device),
+            "new_xception":       lambda: new_xception.load_new_xception(cfg, device=device),
+            "new_efficientnet":   lambda: new_efficientnet.load_new_efficientnet(cfg, device=device),
+            "new_vit_small":      lambda: new_vit_small.load_new_vit_small(cfg, device=device),
+            "new_vit_large_clip": lambda: new_vit_large_clip.load_new_vit_large_clip(cfg, device=device),
         }
         jobs = {name: fn for name, fn in loaders.items() if name in active}
         with ThreadPoolExecutor(max_workers=min(4, len(jobs))) as pool:
             results = {name: pool.submit(fn) for name, fn in jobs.items()}
             loaded = {name: fut.result() for name, fut in results.items()}
-        return ModelBundle(cnn=loaded.get("cnn"), effnet=loaded.get("efficientnet"),
-                           vit=loaded.get("vit"), vit_l14=loaded.get("vit_l14"),
-                           device=device)
+
+        return ModelBundle(
+            xception=loaded.get("new_xception"),
+            efficientnet=loaded.get("new_efficientnet"),
+            vit_small=loaded.get("new_vit_small"),
+            vit_large_clip=loaded.get("new_vit_large_clip"),
+            device=device,
+        )
 
     # ------------------------------------------------------------- helpers
+    @staticmethod
+    def _aggregate_frame_probs(frame_probs: np.ndarray, top_ratio: float = 0.30) -> float:
+        """Aggregate per-frame probabilities using Top-K pooling + mean blend.
+
+        If a video contains deepfake manipulation in only certain seconds,
+        a simple global mean() severely dilutes the fake score. Top-K pooling
+        ensures manipulated sections are prioritized while still accounting for
+        the full video context.
+        """
+        if len(frame_probs) == 0:
+            return 0.0
+        k = max(1, int(np.ceil(len(frame_probs) * top_ratio)))
+        top_k = np.sort(frame_probs)[-k:]
+        # 70% weight on the top most manipulated frames, 30% on overall mean
+        score = 0.70 * float(top_k.mean()) + 0.30 * float(frame_probs.mean())
+        return float(np.clip(score, 0.0, 1.0))
+
     def _to_clip_tensor(self, faces: list[np.ndarray]) -> torch.Tensor:
-        """[T, 3, 224, 224] tensor from a list of aligned face crops."""
+        """[T, 3, 224, 224] float tensor from aligned face crops."""
         batch = np.stack([self.pre.face_to_tensor(f) for f in faces], axis=0)
         return torch.from_numpy(batch).to(self.device)
 
@@ -91,7 +120,7 @@ class Detector:
     # --------------------------------------------------------------- image
     def detect_image(self, image_path, artifacts_dir,
                      original_name: str | None = None) -> dict:
-        """UC-03: XceptionNet + EfficientNet-B3 + ViT, Grad-CAM."""
+        """UC-03: 4-model soft-voting ensemble for image deepfake detection."""
         with self.lock:
             artifacts = self._artifacts_dir(artifacts_dir)
             bgr = cv2.imread(str(image_path))
@@ -99,32 +128,46 @@ class Detector:
                 raise RuntimeError("Could not read the uploaded image.")
 
             face, box, conf = self.pre.detect_face(bgr)          # FR-06..FR-08
-            clip = self._to_clip_tensor([face])             # [1,3,224,224]
+            clip = self._to_clip_tensor([face])                   # [1,3,224,224]
 
+            scores = {}
             with torch.no_grad(), torch.inference_mode():
-                p_cnn = torch.sigmoid(self.bundle.cnn(clip)).item()
-                p_effnet = torch.sigmoid(self.bundle.effnet(clip)).item()
-                p_vit = float(self.bundle.vit.predict_proba([face]).item())
+                if self.bundle.xception is not None:
+                    scores["new_xception"] = float(
+                        torch.softmax(self.bundle.xception(clip), dim=1)[0, 1].item()
+                    )
+                if self.bundle.efficientnet is not None:
+                    scores["new_efficientnet"] = float(
+                        torch.softmax(self.bundle.efficientnet(clip), dim=1)[0, 1].item()
+                    )
+                if self.bundle.vit_small is not None:
+                    scores["new_vit_small"] = float(
+                        torch.softmax(self.bundle.vit_small(clip), dim=1)[0, 1].item()
+                    )
+                if self.bundle.vit_large_clip is not None:
+                    scores["new_vit_large_clip"] = float(
+                        torch.softmax(self.bundle.vit_large_clip(clip), dim=1)[0, 1].item()
+                    )
 
-            saliency = compute_gradcam_heatmap(self.bundle.cnn, clip, self.device)
+            # Grad-CAM from XceptionNet (best spatial CNN for saliency)
+            gradcam_model = self.bundle.xception
+            saliency = compute_gradcam_heatmap(gradcam_model, clip, self.device)
             heat_p = save_heatmap_overlay(saliency, face, artifacts / "heatmap.png")
             crop_p = self._persist_png(face, artifacts / "face_crop.png")
 
-            result = self.ensemble.combine(
-                {"cnn": p_cnn, "efficientnet": p_effnet,
-                 "vit": p_vit},
-                kind="image")
-            return self._finalize(result, kind="image", artifacts=artifacts,
-                                  original_name=original_name,
-                                  heatmap_path=heat_p.name,
-                                  face_crop_path=crop_p.name,
-                                  frames_analyzed=1)
+            result = self.ensemble.combine(scores, kind="image")
+            return self._finalize(
+                result, kind="image", artifacts=artifacts,
+                original_name=original_name,
+                heatmap_path=heat_p.name,
+                face_crop_path=crop_p.name,
+                frames_analyzed=1,
+            )
 
     # --------------------------------------------------------------- video
     def detect_video(self, video_path, artifacts_dir,
                      original_name: str | None = None) -> dict:
-        """UC-04: frames -> EfficientNet-B3 frame scores + ViT + ViT-L/14 votes
-(XceptionNet stays as the Grad-CAM source)."""
+        """UC-04: 4-model soft-voting ensemble for video deepfake detection with Top-K pooling."""
         with self.lock:
             artifacts = self._artifacts_dir(artifacts_dir)
             frames = extract_video_frames(
@@ -145,7 +188,7 @@ class Detector:
                     face, _, _ = self.pre.detect_face(bgr)
                     faces.append(face)
                 except NoFaceError:
-                    continue  # per-frame rejection logged (P2.2)
+                    continue
 
             if not faces:
                 raise NoFaceError(
@@ -153,36 +196,58 @@ class Detector:
                     "clearly visible human face."
                 )
 
-            clip = self._to_clip_tensor(faces)                  # [T,3,224,224]
-            with torch.no_grad(), torch.inference_mode():
-                eff_logits = self.bundle.effnet(clip)           # [T,1]
-                p_eff_frames = torch.sigmoid(eff_logits).cpu().numpy().reshape(-1)
-                p_effnet = float(p_eff_frames.mean())
-                # NB: only EffNet-B3 + ViT + ViT-L/14 vote on video - the
-                # dima806 ViT-B/16 and the BiLSTM were retired, and the
-                # XceptionNet stays as the Grad-CAM source only
-                # (config ensemble.video_weights).
-                p_vit = float(self.bundle.vit.predict_proba(faces).mean())
-                p_vit_l14 = float(self.bundle.vit_l14.predict_proba(faces).mean())
+            clip = self._to_clip_tensor(faces)      # [T, 3, 224, 224]
 
-            # Grad-CAM on the most manipulated frame (FR-17).
-            # No inference_mode here: Grad-CAM needs autograd.
-            worst = int(np.argmax(p_eff_frames))
+            scores = {}
+            all_model_frame_probs = []
+
+            with torch.no_grad(), torch.inference_mode():
+                if self.bundle.xception is not None:
+                    xc_logits = self.bundle.xception(clip)
+                    xc_probs = torch.softmax(xc_logits, dim=1)[:, 1].cpu().numpy()
+                    scores["new_xception"] = self._aggregate_frame_probs(xc_probs)
+                    all_model_frame_probs.append(xc_probs)
+
+                if self.bundle.efficientnet is not None:
+                    eff_logits = self.bundle.efficientnet(clip)
+                    eff_probs = torch.softmax(eff_logits, dim=1)[:, 1].cpu().numpy()
+                    scores["new_efficientnet"] = self._aggregate_frame_probs(eff_probs)
+                    all_model_frame_probs.append(eff_probs)
+
+                if self.bundle.vit_small is not None:
+                    vs_logits = self.bundle.vit_small(clip)
+                    vs_probs = torch.softmax(vs_logits, dim=1)[:, 1].cpu().numpy()
+                    scores["new_vit_small"] = self._aggregate_frame_probs(vs_probs)
+                    all_model_frame_probs.append(vs_probs)
+
+                if self.bundle.vit_large_clip is not None:
+                    vit_clip_probs = self.bundle.vit_large_clip.predict_proba(clip.cpu().numpy())
+                    scores["new_vit_large_clip"] = self._aggregate_frame_probs(vit_clip_probs)
+                    all_model_frame_probs.append(vit_clip_probs)
+
+            # Find the most-manipulated frame across models for Grad-CAM overlay
+            if all_model_frame_probs:
+                avg_frame_probs = np.mean(all_model_frame_probs, axis=0)
+                worst = int(np.argmax(avg_frame_probs))
+            else:
+                worst = 0
+
             t_worst = self._to_clip_tensor([faces[worst]])  # [1,3,224,224]
-            saliency = compute_gradcam_heatmap(self.bundle.cnn, t_worst, self.device)
-            heat_p = save_heatmap_overlay(saliency, faces[worst].astype(np.uint8),
-                                          artifacts / "heatmap.png")
+            gradcam_model = self.bundle.xception or self.bundle.efficientnet
+            saliency = compute_gradcam_heatmap(gradcam_model, t_worst, self.device)
+            heat_p = save_heatmap_overlay(
+                saliency, faces[worst].astype(np.uint8),
+                artifacts / "heatmap.png"
+            )
             crop_p = self._persist_png(faces[0], artifacts / "face_crop.png")
 
-            result = self.ensemble.combine(
-                {"efficientnet": p_effnet,
-                 "vit": p_vit, "vit_l14": p_vit_l14},
-                kind="video"
-            )
+            result = self.ensemble.combine(scores, kind="video")
             return self._finalize(
                 result, kind="video", artifacts=artifacts,
-                original_name=original_name, heatmap_path=heat_p.name,
-                face_crop_path=crop_p.name, frames_analyzed=len(faces),
+                original_name=original_name,
+                heatmap_path=heat_p.name,
+                face_crop_path=crop_p.name,
+                frames_analyzed=len(faces),
                 most_manipulated_frame=worst + 1,
                 analyzed_seconds=round(len(frames) / self.fps, 1),
             )
@@ -199,10 +264,16 @@ class Detector:
             "threshold": result["threshold"],
             "disagreement": bool(result.get("disagreement", False)),
             "scores": result["scores"],
-            "cnn_score": result["scores"].get("cnn"),
-            "effnet_score": result["scores"].get("efficientnet"),
-            "vit_score": result["scores"].get("vit"),
-            "vit_l14_score": result["scores"].get("vit_l14"),
+            # Individual model scores (new naming)
+            "xception_score":       result["scores"].get("new_xception"),
+            "efficientnet_score":   result["scores"].get("new_efficientnet"),
+            "vit_small_score":      result["scores"].get("new_vit_small"),
+            "vit_large_clip_score": result["scores"].get("new_vit_large_clip"),
+            # Legacy keys kept for frontend compatibility
+            "cnn_score":    result["scores"].get("new_xception"),
+            "effnet_score": result["scores"].get("new_efficientnet"),
+            "vit_score":    result["scores"].get("new_vit_small"),
+            "vit_l14_score": result["scores"].get("new_vit_large_clip"),
             "heatmap_path": heatmap_path,
             "face_crop_path": face_crop_path,
             "faces_analyzed": frames_analyzed,

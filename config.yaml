@@ -20,75 +20,54 @@ uploads:
 models:
   device: auto                    # auto | cpu | cuda
 
-  cnn:                            # FR-11: XceptionNet CNN backbone
-    name: XceptionNet             # FR-11 canonical CNN backbone
-    type: xception                # timm 'legacy_xception' 
-    checkpoint: ./models/xception_weights.pt
-    backbone_prefix: "backbone."  # prefix inside the released checkpoint
+  # ===========================================================================
+  # NEW DeepShield-trained models (replace all old models)
+  # Place the .pth files in the models/ folder before starting the server.
+  # ===========================================================================
 
-  efficientnet:                   # EfficientNet-B3 (2nd spatial CNN, FR-11)
-    name: "EfficientNet-B3"
-    type: efficientnet_b3         # timm 'efficientnet_b3' 
-    checkpoint: ./models/efficientnet_weights.pt
-    backbone_prefix: "backbone."  # prefix inside the released checkpoint
+  new_xception:                   # timm legacy_xception, 2-class (Real/Fake)
+    name: "XceptionNet (DeepShield)"
+    type: legacy_xception
+    checkpoint: ./models/best_xception.pth
 
-  vit:                            # FR-12:  ViT-Small (CVPR 2025)
-    name: "ViT model"
-    type: vit_small_384           # 2.7M samples / 4,803 generators, sigmoid logit
-    checkpoint: ./models/ViT      # local clone (transformers format)
-    hf_repo: Khubaib7/deepfake-models  # fallback: your account if local is absent
-    hf_subfolder: ViT
+  new_efficientnet:               # torchvision EfficientNet-B3, 2-class
+    name: "EfficientNet-B3 (DeepShield)"
+    type: efficientnet_b3
+    checkpoint: ./models/best_efficientnet_b3.pth
 
-  vit_b16:                        # RETIRED:  ViT-B/16 (never loaded/voted)
-    name: "ViT-B/16 (retired)"
-    checkpoint: ./models/ViT-B16-retired  # kept on disk, HF copy removed after
-                                          # the HF-side rename of the two actives
-    hf_repo: Khubaib7/deepfake-models
-    hf_subfolder: ViT-B16-retired
-    labels: [Real, Fake]          # id2label of the HF checkpoint kept locally
+  new_vit_small:                  # timm vit_small_patch16_224, 2-class
+    name: "ViT-Small (DeepShield)"
+    type: vit_small_patch16_224
+    checkpoint: ./models/best_vit_small.pth
 
-  lstm:                           # FR-13: ResNet-18 + 2-layer BiLSTM
-    name: "ResNet18-BiLSTM"
-    type: resnet_bilstm
-    checkpoint: ./models/cnn_lstm_weights.pth
-    hidden_size: 256
-    num_layers: 2
-    dropout: 0.3
-    sequence_frames: 24           # TBD-03 resolved: 24-frame clip, as trained
+  new_vit_large_clip:             # timm vit_large_patch14_clip_224, 2-class
+    name: "ViT-Large/CLIP (DeepShield)"
+    type: vit_large_patch14_clip_224
+    checkpoint: ./models/best_vit_large_clip.pth
 
-  vit_l14:                        #  CLIP ViT-L/14, LN-tuned (WACV 2026)
-    name: "ViT-L/14"
-    type: torchscript
-    checkpoint: ./models/vit_l14/model.torchscript
-    hf_repo: Khubaib7/deepfake-models  # fallback: your account if local is absent
-    hf_subfolder: vit_l14
-    file: model.torchscript
-
-ensemble:                         # FR-14: weighted soft voting (normalised internally)
-  # Lineups were trimmed by the owner (files kept on disk / HF, models simply
-  # not voted): images = XceptionNet + EfficientNet-B3 + ViT;
-  # videos = EfficientNet-B3 + ViT + ViT-L/14. The dima806 ViT-B/16 and the
-  # ResNet18-BiLSTM are retired - a weight of 0.0 means the model is not
-  # loaded and never runs.
-  image_weights:                  # UC-03 image detection (3 models)
-    cnn: 1.0                      # XceptionNet
-    efficientnet: 1.0             # EfficientNet-B3
-    vit: 1.0                      # CommunityForensics ViT (CVPR 2025)
-    vit_l14: 0.0                  # not voted on images (kept for video only)
-  video_weights:                  # UC-04 video detection (3 models)
-    cnn: 0.0                      # retired from video votes
-    efficientnet: 1.0
-    lstm: 0.0                     # retired (least stable out-of-domain)
-    vit: 1.0
-    vit_l14: 1.0                  # generalizable CLIP detector (WACV 2026)
-  threshold: 0.5                  # verdict: FAKE if P_fake >= threshold else REAL
-
+ensemble:                         # FR-14: equal-weight soft voting across 4 new models
+  # All 4 DeepShield-trained models vote with equal weight (1.0 each).
+  # The ensemble.combine() normalises by sum-of-weights automatically.
+  # Set a model's weight to 0.0 to exclude it without removing the file.
+  image_weights:                  # UC-03 image detection
+    new_xception: 1.0             # XceptionNet (DeepShield)
+    new_efficientnet: 1.0         # EfficientNet-B3 (DeepShield)
+    new_vit_small: 1.0            # ViT-Small (DeepShield)
+    new_vit_large_clip: 1.0       # ViT-Large/CLIP (DeepShield)
+  video_weights:                  # UC-04 video detection
+    new_xception: 1.0
+    new_efficientnet: 1.0
+    new_vit_small: 1.0
+    new_vit_large_clip: 1.0
+  threshold: 0.40                  # verdict: FAKE if P_fake >= threshold else REAL
+ 
 preprocessing:
   video_fps: 5                    # FR-05: configurable frame extraction rate
   max_frames: 40                  # uniform sample of frames for analysis
   target_size: 224                # FR-09: model input resolution
-  face_margin: 0.30               # crop pad around MTCNN box (models trained @ 30%)
+  face_margin: 0.10               # crop pad around MTCNN box (0.10 matches face crops)
   mtcnn_confidence: 0.95          # MTCNN conf threshold (Section 5.4.1)
+  normalize_mode: scale_01        # scale_01 (0..1 range matching training) | imagenet
   imagenet_mean: [0.485, 0.456, 0.406]             # FR-10
   imagenet_std: [0.229, 0.224, 0.225]              # FR-10
 

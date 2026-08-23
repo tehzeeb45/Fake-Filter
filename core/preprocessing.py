@@ -146,6 +146,7 @@ class FacePreprocessor:
         self.target_size = int(prep.target_size)
         self.margin = float(prep.face_margin)
         self.conf_threshold = float(prep.mtcnn_confidence)
+        self.normalize_mode = getattr(prep, "normalize_mode", "scale_01")
         self.mean = np.array(prep.imagenet_mean, dtype=np.float32).reshape(3, 1, 1)
         self.std = np.array(prep.imagenet_std, dtype=np.float32).reshape(3, 1, 1)
         self._mtcnn = MTCNN(keep_all=False, post_process=False, device="cpu")
@@ -224,10 +225,11 @@ class FacePreprocessor:
 
     # ------------------------------------------------------------- tensors
     def face_to_tensor(self, face_rgb: np.ndarray) -> np.ndarray:
-        """FR-09/FR-10: uint8 RGB -> float32 CHW, ImageNet-normalised."""
+        """FR-09/FR-10: uint8 RGB -> float32 CHW [0..1] (scale_01) or ImageNet normalised."""
         img = face_rgb.astype(np.float32) / 255.0
         img = np.transpose(img, (2, 0, 1))
-        img = (img - self.mean) / self.std
+        if self.normalize_mode == "imagenet":
+            img = (img - self.mean) / self.std
         return np.ascontiguousarray(img)
 
     def tensor_for_vis(self, face_rgb: np.ndarray) -> np.ndarray:
