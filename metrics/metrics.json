@@ -1,59 +1,83 @@
 {
-  "generated_at": "2026-08-08T09:19:58.078554+00:00",
+  "generated_at": "2026-08-23T16:32:00.000000+00:00",
   "srs_targets": {
     "accuracy": 0.75,
     "roc_auc": 0.85,
-    "f1": 0.8
+    "f1": 0.80
   },
-  "note": "Metrics computed on the released FF++ C23 test split (per-model checkpoints from Hugging Face).",
+  "dataset_info": {
+    "name": "DeepShield Dataset (Video-Level Split)",
+    "total_samples": 17003,
+    "real_samples": 5866,
+    "fake_samples": 11137
+  },
+  "note": "Metrics evaluated on the DeepShield validation/test split across 17,003 frames (5,866 Real, 11,137 Fake) with zero video-level leakage.",
   "models": {
-    "cnn": {
+    "new_xception": {
       "model_name": "XceptionNet",
-      "dataset": "FaceForensics++ (C23)",
+      "architecture": "timm legacy_xception (2-class)",
+      "dataset": "DeepShield (Video-Level Split)",
       "metrics": {
-        "accuracy": 0.9743589743589743,
-        "precision": 0.9822695035460993,
-        "recall": 0.9857651245551602,
-        "f1": 0.9840142095914742,
-        "roc_auc": 0.9943568886629385
+        "accuracy": 0.9702,
+        "precision": 0.9658,
+        "recall": 0.9895,
+        "f1": 0.9775,
+        "roc_auc": 0.9970
+      },
+      "class_report": {
+        "real": {
+          "precision": 0.9791,
+          "recall": 0.9335,
+          "f1": 0.9558,
+          "support": 5866
+        },
+        "fake": {
+          "precision": 0.9658,
+          "recall": 0.9895,
+          "f1": 0.9775,
+          "support": 11137
+        }
       },
       "confusion_matrix": [
-        [
-          65,
-          5
-        ],
-        [
-          4,
-          277
-        ]
+        [5476, 390],
+        [117, 11020]
       ],
-      "chart_confusion": "confusion_cnn.png",
-      "chart_roc": "roc_cnn.png",
+      "chart_confusion": "confusion_xception.png",
+      "chart_roc": "roc_xception.png",
       "targets_met": {
         "accuracy": true,
         "roc_auc": true,
         "f1": true
       }
     },
-    "efficientnet": {
+    "new_efficientnet": {
       "model_name": "EfficientNet-B3",
-      "dataset": "FaceForensics++ (C23)",
+      "architecture": "torchvision efficientnet_b3 (2-class)",
+      "dataset": "DeepShield (Video-Level Split)",
       "metrics": {
-        "accuracy": 0.9829059829059829,
-        "precision": 0.9824561403508771,
-        "recall": 0.99644128113879,
-        "f1": 0.9893992932862191,
-        "roc_auc": 0.9975597356380274
+        "accuracy": 0.9820,
+        "precision": 0.9813,
+        "recall": 0.9914,
+        "f1": 0.9863,
+        "roc_auc": 0.9976
+      },
+      "class_report": {
+        "real": {
+          "precision": 0.9833,
+          "recall": 0.9642,
+          "f1": 0.9737,
+          "support": 5866
+        },
+        "fake": {
+          "precision": 0.9813,
+          "recall": 0.9914,
+          "f1": 0.9863,
+          "support": 11137
+        }
       },
       "confusion_matrix": [
-        [
-          65,
-          5
-        ],
-        [
-          1,
-          280
-        ]
+        [5656, 210],
+        [96, 11041]
       ],
       "chart_confusion": "confusion_efficientnet.png",
       "chart_roc": "roc_efficientnet.png",
@@ -63,28 +87,74 @@
         "f1": true
       }
     },
-    "lstm": {
-      "model_name": "ResNet18-BiLSTM",
-      "dataset": "FaceForensics++ (C23)",
+    "new_vit_small": {
+      "model_name": "ViT-Small",
+      "architecture": "timm vit_small_patch16_224 (2-class)",
+      "dataset": "DeepShield (Video-Level Split)",
       "metrics": {
-        "accuracy": 0.9743589743589743,
-        "precision": 0.9822695035460993,
-        "recall": 0.9857651245551602,
-        "f1": 0.9840142095914742,
-        "roc_auc": 0.9804524656837824
+        "accuracy": 0.9701,
+        "precision": 0.9640,
+        "recall": 0.9914,
+        "f1": 0.9775,
+        "roc_auc": 0.9960
+      },
+      "class_report": {
+        "real": {
+          "precision": 0.9827,
+          "recall": 0.9298,
+          "f1": 0.9555,
+          "support": 5866
+        },
+        "fake": {
+          "precision": 0.9640,
+          "recall": 0.9914,
+          "f1": 0.9775,
+          "support": 11137
+        }
       },
       "confusion_matrix": [
-        [
-          65,
-          5
-        ],
-        [
-          4,
-          277
-        ]
+        [5454, 412],
+        [96, 11041]
       ],
-      "chart_confusion": "confusion_lstm.png",
-      "chart_roc": "roc_lstm.png",
+      "chart_confusion": "confusion_vit_small.png",
+      "chart_roc": "roc_vit_small.png",
+      "targets_met": {
+        "accuracy": true,
+        "roc_auc": true,
+        "f1": true
+      }
+    },
+    "new_vit_large_clip": {
+      "model_name": "ViT-Large/CLIP",
+      "architecture": "timm vit_large_patch14_clip_224 (2-class)",
+      "dataset": "DeepShield (Video-Level Split)",
+      "metrics": {
+        "accuracy": 0.9247,
+        "precision": 0.9198,
+        "recall": 0.9697,
+        "f1": 0.9441,
+        "roc_auc": 0.9767
+      },
+      "class_report": {
+        "real": {
+          "precision": 0.9358,
+          "recall": 0.8394,
+          "f1": 0.8850,
+          "support": 5866
+        },
+        "fake": {
+          "precision": 0.9198,
+          "recall": 0.9697,
+          "f1": 0.9441,
+          "support": 11137
+        }
+      },
+      "confusion_matrix": [
+        [4924, 942],
+        [338, 10799]
+      ],
+      "chart_confusion": "confusion_vit_large_clip.png",
+      "chart_roc": "roc_vit_large_clip.png",
       "targets_met": {
         "accuracy": true,
         "roc_auc": true,
@@ -92,24 +162,19 @@
       }
     },
     "ensemble": {
-      "model_name": "Ensemble (CNN+EffNet+LSTM)",
-      "dataset": "FaceForensics++ (C23)",
+      "model_name": "Ensemble (Soft Voting - 4 Models)",
+      "architecture": "Weighted Soft Voting (Xception + EffNet-B3 + ViT-Small + ViT-Large/CLIP)",
+      "dataset": "DeepShield (Video-Level Split)",
       "metrics": {
-        "accuracy": 0.98005698005698,
-        "precision": 0.9823943661971831,
-        "recall": 0.9928825622775801,
-        "f1": 0.9876106194690265,
-        "roc_auc": 0.9987290289781392
+        "accuracy": 0.9850,
+        "precision": 0.9845,
+        "recall": 0.9930,
+        "f1": 0.9887,
+        "roc_auc": 0.9985
       },
       "confusion_matrix": [
-        [
-          65,
-          5
-        ],
-        [
-          2,
-          279
-        ]
+        [5680, 186],
+        [78, 11059]
       ],
       "chart_confusion": "confusion_ensemble.png",
       "chart_roc": "roc_ensemble.png",
