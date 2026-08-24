@@ -58,8 +58,9 @@ ensemble:                         # FR-14: equal-weight soft voting across 4 new
     new_xception: 1.0
     new_efficientnet: 1.0
     new_vit_small: 1.0
-    new_vit_large_clip: 1.0
-  threshold: 0.40                  # verdict: FAKE if P_fake >= threshold else REAL
+  image_threshold: 0.50            # image detection threshold (balanced against camera portrait/beauty filters)
+  video_threshold: 0.40            # video detection threshold (sensitive with Top-K frame pooling)
+  threshold: 0.40                  # default fallback threshold
  
 preprocessing:
   video_fps: 5                    # FR-05: configurable frame extraction rate

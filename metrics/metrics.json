@@ -44,6 +44,7 @@
       ],
       "chart_confusion": "confusion_xception.png",
       "chart_roc": "roc_xception.png",
+      "chart_loss": "loss_xception.png",
       "targets_met": {
         "accuracy": true,
         "roc_auc": true,
@@ -53,34 +54,37 @@
     "new_efficientnet": {
       "model_name": "EfficientNet-B3",
       "architecture": "torchvision efficientnet_b3 (2-class)",
-      "dataset": "DeepShield (Video-Level Split)",
+      "dataset": "140k Real and Fake Faces (Stratified 85/15 Split)",
       "metrics": {
-        "accuracy": 0.9820,
-        "precision": 0.9813,
-        "recall": 0.9914,
-        "f1": 0.9863,
-        "roc_auc": 0.9976
+        "accuracy": 0.9994,
+        "precision": 0.9992,
+        "recall": 0.9996,
+        "f1": 0.9994,
+        "roc_auc": 1.0000
       },
       "class_report": {
         "real": {
-          "precision": 0.9833,
-          "recall": 0.9642,
-          "f1": 0.9737,
-          "support": 5866
+          "precision": 0.9996,
+          "recall": 0.9992,
+          "f1": 0.9994,
+          "support": 7500
         },
         "fake": {
-          "precision": 0.9813,
-          "recall": 0.9914,
-          "f1": 0.9863,
-          "support": 11137
+          "precision": 0.9992,
+          "recall": 0.9996,
+          "f1": 0.9994,
+          "support": 7500
         }
       },
       "confusion_matrix": [
-        [5656, 210],
-        [96, 11041]
+        [7494, 6],
+        [3, 7497]
       ],
       "chart_confusion": "confusion_efficientnet.png",
       "chart_roc": "roc_efficientnet.png",
+      "chart_loss": "loss_efficientnet.png",
+      "chart_accuracy": "accuracy_efficientnet.png",
+      "chart_curves": "curves_efficientnet.png",
       "targets_met": {
         "accuracy": true,
         "roc_auc": true,
@@ -118,6 +122,7 @@
       ],
       "chart_confusion": "confusion_vit_small.png",
       "chart_roc": "roc_vit_small.png",
+      "chart_loss": "loss_vit_small.png",
       "targets_met": {
         "accuracy": true,
         "roc_auc": true,

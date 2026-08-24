@@ -18,9 +18,9 @@ models_data = {
         "name": "XceptionNet"
     },
     "efficientnet": {
-        "cm": np.array([[5656, 210], [96, 11041]]),
+        "cm": np.array([[7494, 6], [3, 7497]]),
         "cmap": "Greens",
-        "auc": 0.9976,
+        "auc": 1.0000,
         "name": "EfficientNet-B3"
     },
     "vit_small": {
@@ -76,4 +76,98 @@ for key, d in models_data.items():
     plt.savefig(out_dir / f"roc_{key}.png", dpi=200)
     plt.close()
 
-print("Successfully generated all Confusion Matrix and ROC Curve charts in metrics/!")
+# 3. EfficientNet-B3 Training Curves (Loss & Accuracy)
+epochs = np.arange(1, 13)
+train_loss = np.array([0.114, 0.020, 0.009, 0.007, 0.006, 0.005, 0.004, 0.004, 0.003, 0.003, 0.004, 0.002])
+val_loss = np.array([0.019, 0.007, 0.004, 0.009, 0.145, 0.008, 0.003, 0.007, 0.001, 0.005, 0.002, 0.003])
+train_acc = np.array([0.954, 0.993, 0.996, 0.997, 0.998, 0.998, 0.999, 0.999, 0.999, 0.999, 0.999, 0.999])
+val_acc = np.array([0.993, 0.998, 0.998, 0.996, 0.998, 0.995, 0.999, 0.999, 0.999, 0.999, 0.999, 0.999])
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+# Panel 1: Loss Curve
+axes[0].plot(epochs, train_loss, marker="o", lw=2, label="Train Loss", color="#1f77b4")
+axes[0].plot(epochs, val_loss, marker="o", lw=2, label="Val Loss", color="#ff7f0e")
+axes[0].set_title("Train / Val Loss Curve", fontsize=14, fontweight="bold", pad=12)
+axes[0].set_xlabel("Epoch", fontsize=12)
+axes[0].set_ylabel("Loss", fontsize=12)
+axes[0].grid(True, alpha=0.3)
+axes[0].legend(fontsize=11)
+
+# Panel 2: Accuracy Curve
+axes[1].plot(epochs, train_acc, marker="o", lw=2, label="Train Acc", color="#1f77b4")
+axes[1].plot(epochs, val_acc, marker="o", lw=2, label="Val Acc", color="#ff7f0e")
+axes[1].set_title("Train / Val Accuracy Curve", fontsize=14, fontweight="bold", pad=12)
+axes[1].set_xlabel("Epoch", fontsize=12)
+axes[1].set_ylabel("Accuracy", fontsize=12)
+axes[1].set_ylim([0.0, 1.05])
+axes[1].grid(True, alpha=0.3)
+axes[1].legend(fontsize=11)
+
+plt.tight_layout()
+plt.savefig(out_dir / "curves_efficientnet.png", dpi=200)
+plt.close()
+
+# Single Loss Curve
+fig, ax = plt.subplots(figsize=(6, 5))
+ax.plot(epochs, train_loss, marker="o", lw=2, label="Train Loss", color="#1f77b4")
+ax.plot(epochs, val_loss, marker="o", lw=2, label="Val Loss", color="#ff7f0e")
+ax.set_title("EfficientNet-B3 Loss Curve", fontsize=14, fontweight="bold", pad=12)
+ax.set_xlabel("Epoch", fontsize=12)
+ax.set_ylabel("Loss", fontsize=12)
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=11)
+plt.tight_layout()
+plt.savefig(out_dir / "loss_efficientnet.png", dpi=200)
+plt.close()
+
+# Single Accuracy Curve
+fig, ax = plt.subplots(figsize=(6, 5))
+ax.plot(epochs, train_acc, marker="o", lw=2, label="Train Acc", color="#1f77b4")
+ax.plot(epochs, val_acc, marker="o", lw=2, label="Val Acc", color="#ff7f0e")
+ax.set_title("EfficientNet-B3 Accuracy Curve", fontsize=14, fontweight="bold", pad=12)
+ax.set_xlabel("Epoch", fontsize=12)
+ax.set_ylabel("Accuracy", fontsize=12)
+ax.set_ylim([0.0, 1.05])
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=11)
+plt.tight_layout()
+plt.savefig(out_dir / "accuracy_efficientnet.png", dpi=200)
+plt.close()
+
+# 4. ViT-Small Loss Curve (Epochs 0 to 5)
+vit_epochs = np.arange(0, 6)
+vit_train_loss = np.array([0.332, 0.119, 0.066, 0.055, 0.045, 0.034])
+vit_val_loss = np.array([0.162, 0.207, 0.093, 0.185, 0.495, 0.131])
+
+fig, ax = plt.subplots(figsize=(6, 5))
+ax.plot(vit_epochs, vit_train_loss, color="blue", lw=2, label="Train Loss")
+ax.plot(vit_epochs, vit_val_loss, color="orange", lw=2, label="Val Loss")
+ax.set_title("vit_small Loss Curve", fontsize=14, fontweight="bold", pad=12)
+ax.set_xlabel("Epoch", fontsize=12)
+ax.set_ylabel("Loss", fontsize=12)
+ax.grid(True, alpha=0.3)
+ax.legend(loc="upper left", fontsize=11)
+plt.tight_layout()
+plt.savefig(out_dir / "loss_vit_small.png", dpi=200)
+plt.close()
+
+# 5. Xception Loss Curve (Epochs 0 to 8)
+xcp_epochs = np.arange(0, 9)
+xcp_train_loss = np.array([0.308, 0.088, 0.039, 0.028, 0.024, 0.004, 0.001, 0.026, 0.003])
+xcp_val_loss = np.array([0.150, 0.157, 0.132, 0.075, 0.103, 0.086, 0.095, 0.077, 0.120])
+
+fig, ax = plt.subplots(figsize=(6, 5))
+ax.plot(xcp_epochs, xcp_train_loss, color="blue", lw=2, label="Train Loss")
+ax.plot(xcp_epochs, xcp_val_loss, color="orange", lw=2, label="Val Loss")
+ax.set_title("xception Loss Curve", fontsize=14, fontweight="bold", pad=12)
+ax.set_xlabel("Epoch", fontsize=12)
+ax.set_ylabel("Loss", fontsize=12)
+ax.grid(True, alpha=0.3)
+ax.legend(loc="upper right", fontsize=11)
+plt.tight_layout()
+plt.savefig(out_dir / "loss_xception.png", dpi=200)
+plt.close()
+
+print("Successfully generated all Confusion Matrix, ROC, Loss, and Accuracy charts in metrics/!")
+

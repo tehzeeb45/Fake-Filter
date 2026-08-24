@@ -43,25 +43,29 @@ class Ensemble:
     """Configured weighted-soft-voting helper."""
 
     def __init__(self, cfg: Config):
-        self.threshold = float(cfg.ensemble.threshold)
+        default_thresh = float(cfg.ensemble.get("threshold", 0.50))
+        self.image_threshold = float(cfg.ensemble.get("image_threshold", 0.50))
+        self.video_threshold = float(cfg.ensemble.get("video_threshold", default_thresh))
         self.image_weights = {k: float(v) for k, v in cfg.ensemble.image_weights.items()}
         self.video_weights = {k: float(v) for k, v in cfg.ensemble.video_weights.items()}
 
     def combine(self, scores: dict[str, float], kind: str) -> dict:
         weights = self.video_weights if kind == "video" else self.image_weights
+        threshold = self.video_threshold if kind == "video" else self.image_threshold
         p_fake = weighted_average(scores, weights)
-        result = self.to_verdict(p_fake)
+        result = self.to_verdict(p_fake, threshold=threshold)
         result["scores"] = {k: round(v, 4) for k, v in scores.items()}
         result["disagreement"] = False
         return result
 
-    def to_verdict(self, p_fake: float) -> dict:
+    def to_verdict(self, p_fake: float, threshold: float | None = None) -> dict:
+        thresh = self.image_threshold if threshold is None else threshold
         return {
-            "verdict": "FAKE" if p_fake >= self.threshold else "REAL",
+            "verdict": "FAKE" if p_fake >= thresh else "REAL",
             "p_fake": round(float(p_fake), 4),
             "confidence": round(
-                p_fake * 100.0 if p_fake >= self.threshold else (1.0 - p_fake) * 100.0,
+                p_fake * 100.0 if p_fake >= thresh else (1.0 - p_fake) * 100.0,
                 2,
             ),
-            "threshold": self.threshold,
+            "threshold": thresh,
         }

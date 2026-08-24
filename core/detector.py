@@ -120,7 +120,7 @@ class Detector:
     # --------------------------------------------------------------- image
     def detect_image(self, image_path, artifacts_dir,
                      original_name: str | None = None) -> dict:
-        """UC-03: 4-model soft-voting ensemble for image deepfake detection."""
+        """UC-03: 4-model soft-voting ensemble for image deepfake detection with TTA."""
         with self.lock:
             artifacts = self._artifacts_dir(artifacts_dir)
             bgr = cv2.imread(str(image_path))
@@ -128,30 +128,34 @@ class Detector:
                 raise RuntimeError("Could not read the uploaded image.")
 
             face, box, conf = self.pre.detect_face(bgr)          # FR-06..FR-08
-            clip = self._to_clip_tensor([face])                   # [1,3,224,224]
+            
+            # TTA (Test-Time Augmentation): Original + Horizontally Flipped face crop.
+            # Averages out directional lighting, glare, and smartphone portrait-mode edge anomalies.
+            face_flipped = cv2.flip(face, 1)
+            clip = self._to_clip_tensor([face, face_flipped])    # [2, 3, 224, 224]
 
             scores = {}
             with torch.no_grad(), torch.inference_mode():
                 if self.bundle.xception is not None:
-                    scores["new_xception"] = float(
-                        torch.softmax(self.bundle.xception(clip), dim=1)[0, 1].item()
-                    )
-                if self.bundle.efficientnet is not None:
-                    scores["new_efficientnet"] = float(
-                        torch.softmax(self.bundle.efficientnet(clip), dim=1)[0, 1].item()
-                    )
-                if self.bundle.vit_small is not None:
-                    scores["new_vit_small"] = float(
-                        torch.softmax(self.bundle.vit_small(clip), dim=1)[0, 1].item()
-                    )
-                if self.bundle.vit_large_clip is not None:
-                    scores["new_vit_large_clip"] = float(
-                        torch.softmax(self.bundle.vit_large_clip(clip), dim=1)[0, 1].item()
-                    )
+                    xc_probs = torch.softmax(self.bundle.xception(clip), dim=1)[:, 1]
+                    scores["new_xception"] = float(xc_probs.mean().item())
 
-            # Grad-CAM from XceptionNet (best spatial CNN for saliency)
-            gradcam_model = self.bundle.xception
-            saliency = compute_gradcam_heatmap(gradcam_model, clip, self.device)
+                if self.bundle.efficientnet is not None:
+                    eff_probs = torch.softmax(self.bundle.efficientnet(clip), dim=1)[:, 1]
+                    scores["new_efficientnet"] = float(eff_probs.mean().item())
+
+                if self.bundle.vit_small is not None:
+                    vs_probs = torch.softmax(self.bundle.vit_small(clip), dim=1)[:, 1]
+                    scores["new_vit_small"] = float(vs_probs.mean().item())
+
+                if self.bundle.vit_large_clip is not None:
+                    vlc_probs = self.bundle.vit_large_clip.predict_proba(clip.cpu().numpy())
+                    scores["new_vit_large_clip"] = float(vlc_probs.mean())
+
+            # Grad-CAM from XceptionNet on the original face crop
+            clip_orig = clip[:1]  # [1, 3, 224, 224]
+            gradcam_model = self.bundle.xception or self.bundle.efficientnet
+            saliency = compute_gradcam_heatmap(gradcam_model, clip_orig, self.device)
             heat_p = save_heatmap_overlay(saliency, face, artifacts / "heatmap.png")
             crop_p = self._persist_png(face, artifacts / "face_crop.png")
 
