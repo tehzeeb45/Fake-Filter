@@ -18,9 +18,9 @@ models_data = {
         "name": "XceptionNet"
     },
     "efficientnet": {
-        "cm": np.array([[7494, 6], [3, 7497]]),
+        "cm": np.array([[5656, 210], [96, 11041]]),
         "cmap": "Greens",
-        "auc": 1.0000,
+        "auc": 0.9976,
         "name": "EfficientNet-B3"
     },
     "vit_small": {
@@ -30,15 +30,15 @@ models_data = {
         "name": "ViT-Small"
     },
     "vit_large_clip": {
-        "cm": np.array([[7500, 0], [9, 7491]]),
+        "cm": np.array([[4924, 942], [338, 10799]]),
         "cmap": "Purples",
-        "auc": 1.0000,
+        "auc": 0.9767,
         "name": "ViT-Large/CLIP"
     },
     "ensemble": {
-        "cm": np.array([[7498, 2], [3, 7497]]),
+        "cm": np.array([[5680, 186], [78, 11059]]),
         "cmap": "Blues",
-        "auc": 1.0000,
+        "auc": 0.9985,
         "name": "Ensemble (Soft Voting)"
     }
 }

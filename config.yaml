@@ -58,7 +58,7 @@ ensemble:                         # FR-14: equal-weight soft voting across 4 new
     new_xception: 1.0
     new_efficientnet: 1.0
     new_vit_small: 1.0
-  image_threshold: 0.50            # image detection threshold (balanced against camera portrait/beauty filters)
+  image_threshold: 0.45            # image detection threshold (balanced against camera portrait/beauty filters)
   video_threshold: 0.40            # video detection threshold (sensitive with Top-K frame pooling)
   threshold: 0.40                  # default fallback threshold
  

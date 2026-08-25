@@ -54,37 +54,35 @@
     "new_efficientnet": {
       "model_name": "EfficientNet-B3",
       "architecture": "torchvision efficientnet_b3 (2-class)",
-      "dataset": "140k Real and Fake Faces (Stratified 85/15 Split)",
+      "dataset": "DeepShield (Video-Level Split)",
       "metrics": {
-        "accuracy": 0.9994,
-        "precision": 0.9992,
-        "recall": 0.9996,
-        "f1": 0.9994,
-        "roc_auc": 1.0000
+        "accuracy": 0.9820,
+        "precision": 0.9813,
+        "recall": 0.9914,
+        "f1": 0.9863,
+        "roc_auc": 0.9976
       },
       "class_report": {
         "real": {
-          "precision": 0.9996,
-          "recall": 0.9992,
-          "f1": 0.9994,
-          "support": 7500
+          "precision": 0.9833,
+          "recall": 0.9642,
+          "f1": 0.9737,
+          "support": 5866
         },
         "fake": {
-          "precision": 0.9992,
-          "recall": 0.9996,
-          "f1": 0.9994,
-          "support": 7500
+          "precision": 0.9813,
+          "recall": 0.9914,
+          "f1": 0.9863,
+          "support": 11137
         }
       },
       "confusion_matrix": [
-        [7494, 6],
-        [3, 7497]
+        [5656, 210],
+        [96, 11041]
       ],
       "chart_confusion": "confusion_efficientnet.png",
       "chart_roc": "roc_efficientnet.png",
       "chart_loss": "loss_efficientnet.png",
-      "chart_accuracy": "accuracy_efficientnet.png",
-      "chart_curves": "curves_efficientnet.png",
       "targets_met": {
         "accuracy": true,
         "roc_auc": true,
@@ -132,37 +130,34 @@
     "new_vit_large_clip": {
       "model_name": "ViT-Large/CLIP",
       "architecture": "timm vit_large_patch14_clip_224 (2-class)",
-      "dataset": "140k Real and Fake Faces (Stratified 85/15 Split)",
+      "dataset": "DeepShield (Video-Level Split)",
       "metrics": {
-        "accuracy": 0.9994,
-        "precision": 1.0000,
-        "recall": 0.9988,
-        "f1": 0.9994,
-        "roc_auc": 1.0000
+        "accuracy": 0.9247,
+        "precision": 0.9198,
+        "recall": 0.9697,
+        "f1": 0.9441,
+        "roc_auc": 0.9767
       },
       "class_report": {
         "real": {
-          "precision": 0.9988,
-          "recall": 1.0000,
-          "f1": 0.9994,
-          "support": 7500
+          "precision": 0.9358,
+          "recall": 0.8394,
+          "f1": 0.8850,
+          "support": 5866
         },
         "fake": {
-          "precision": 1.0000,
-          "recall": 0.9988,
-          "f1": 0.9994,
-          "support": 7500
+          "precision": 0.9198,
+          "recall": 0.9697,
+          "f1": 0.9441,
+          "support": 11137
         }
       },
       "confusion_matrix": [
-        [7500, 0],
-        [9, 7491]
+        [4924, 942],
+        [338, 10799]
       ],
       "chart_confusion": "confusion_vit_large_clip.png",
       "chart_roc": "roc_vit_large_clip.png",
-      "chart_loss": "loss_vit_large_clip.png",
-      "chart_accuracy": "accuracy_vit_large_clip.png",
-      "chart_curves": "curves_vit_large_clip.png",
       "targets_met": {
         "accuracy": true,
         "roc_auc": true,
@@ -177,8 +172,22 @@
         "accuracy": 0.9850,
         "precision": 0.9845,
         "recall": 0.9930,
-        "f1": 0.9887,
+        "f1": 0.9882,
         "roc_auc": 0.9985
+      },
+      "class_report": {
+        "real": {
+          "precision": 0.9860,
+          "recall": 0.9680,
+          "f1": 0.9769,
+          "support": 5866
+        },
+        "fake": {
+          "precision": 0.9845,
+          "recall": 0.9930,
+          "f1": 0.9882,
+          "support": 11137
+        }
       },
       "confusion_matrix": [
         [5680, 186],
