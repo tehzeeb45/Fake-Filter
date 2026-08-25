@@ -50,15 +50,15 @@ ensemble:                         # FR-14: equal-weight soft voting across 4 new
   # The ensemble.combine() normalises by sum-of-weights automatically.
   # Set a model's weight to 0.0 to exclude it without removing the file.
   image_weights:                  # UC-03 image detection
-    new_xception: 1.0             # XceptionNet (DeepShield)
-    new_efficientnet: 1.0         # EfficientNet-B3 (DeepShield)
-    new_vit_small: 1.0            # ViT-Small (DeepShield)
-    new_vit_large_clip: 1.0       # ViT-Large/CLIP (DeepShield)
+    new_xception: 0.3             # XceptionNet (video model - reduced for images)
+    new_efficientnet: 1.0         # EfficientNet-B3 (best for static images)
+    new_vit_small: 0.2            # ViT-Small (video model - reduced for images)
+    new_vit_large_clip: 1.0       # ViT-Large/CLIP (best for static images)
   video_weights:                  # UC-04 video detection
     new_xception: 1.0
     new_efficientnet: 1.0
     new_vit_small: 1.0
-  image_threshold: 0.45            # image detection threshold
+  image_threshold: 0.50            # image detection threshold
   video_threshold: 0.40            # video detection threshold (sensitive with Top-K frame pooling)
   threshold: 0.40                  # default fallback threshold
  

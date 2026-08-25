@@ -53,14 +53,6 @@ class Ensemble:
         weights = self.video_weights if kind == "video" else self.image_weights
         threshold = self.video_threshold if kind == "video" else self.image_threshold
         p_fake = weighted_average(scores, weights)
-
-        # Multi-model consensus for images: if multiple models detect manipulation (>= 0.50),
-        # ensure p_fake reflects the consensus of the detecting models.
-        if kind == "image" and scores:
-            fake_votes = [p for p in scores.values() if p >= 0.50]
-            if len(fake_votes) >= 2:
-                p_fake = max(p_fake, sum(fake_votes) / len(fake_votes))
-
         result = self.to_verdict(p_fake, threshold=threshold)
         result["scores"] = {k: round(v, 4) for k, v in scores.items()}
         result["disagreement"] = False
