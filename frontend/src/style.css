@@ -527,8 +527,19 @@ nav { display: flex; gap: 4px; flex-wrap: wrap; }
 .hist-detail-head h3 { font-size: 16px; margin: 0; }
 .hist-media { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #070b16; margin-bottom: 12px; }
 .hist-media img { width: 100%; max-height: 300px; object-fit: contain; display: block; }
-.hist-detail .meta { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
 .hist-detail .scores { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.hist-detail .chip {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
 .hist-detail .badge { width: auto; height: auto; border-radius: 999px; padding: 7px 16px; }
 
 /* ---------------------------------------------------------------- responsive */
