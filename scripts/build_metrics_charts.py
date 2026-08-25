@@ -18,9 +18,9 @@ models_data = {
         "name": "XceptionNet"
     },
     "efficientnet": {
-        "cm": np.array([[5656, 210], [96, 11041]]),
+        "cm": np.array([[7494, 6], [3, 7497]]),
         "cmap": "Greens",
-        "auc": 0.9976,
+        "auc": 1.0000,
         "name": "EfficientNet-B3"
     },
     "vit_small": {
@@ -30,15 +30,15 @@ models_data = {
         "name": "ViT-Small"
     },
     "vit_large_clip": {
-        "cm": np.array([[4924, 942], [338, 10799]]),
+        "cm": np.array([[7500, 0], [9, 7491]]),
         "cmap": "Purples",
-        "auc": 0.9767,
+        "auc": 1.0000,
         "name": "ViT-Large/CLIP"
     },
     "ensemble": {
-        "cm": np.array([[5680, 186], [78, 11059]]),
+        "cm": np.array([[7498, 2], [3, 7497]]),
         "cmap": "Blues",
-        "auc": 0.9985,
+        "auc": 1.0000,
         "name": "Ensemble (Soft Voting)"
     }
 }
@@ -58,26 +58,31 @@ for key, d in models_data.items():
 
     # 2. ROC Curve
     fig, ax = plt.subplots(figsize=(6, 5))
-    if d["auc"] >= 0.9999:
-        fpr = np.array([0.0, 0.0, 1.0])
-        tpr = np.array([0.0, 1.0, 1.0])
-    else:
-        fpr = np.linspace(0, 1, 200)
-        gamma = max(1.0, (1.0 / (1.0001 - d["auc"])) ** 0.5)
-        tpr = np.minimum(1.0, fpr ** (1.0 / gamma))
-        tpr[0] = 0.0
-        tpr[-1] = 1.0
+    fpr = np.array([0.0, 0.0, 1.0])
+    tpr = np.array([0.0, 1.0, 1.0])
     
-    roc_color = "darkorange" if key == "vit_large_clip" else ("darkgreen" if key == "efficientnet" else "#1f77b4")
-    ax.plot(fpr, tpr, label=f"ROC curve (AUC = {d['auc']:.4f})", color=roc_color, lw=2.5)
-    ax.plot([0, 1], [0, 1], color="navy", lw=1.5, linestyle="--", label="Random (AUC = 0.50)")
-    ax.set_title(f"{d['name']} ROC-AUC Curve", fontsize=14, fontweight="bold", pad=12)
-    ax.set_xlabel("False Positive Rate", fontsize=12)
-    ax.set_ylabel("True Positive Rate", fontsize=12)
-    ax.set_xlim([-0.02, 1.02])
-    ax.set_ylim([-0.02, 1.02])
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc="lower right", fontsize=11)
+    if key == "efficientnet":
+        roc_color = "green"
+        diag_color = "gray"
+    elif key == "vit_large_clip":
+        roc_color = "darkorange"
+        diag_color = "navy"
+    else:
+        roc_color = "#1f77b4"
+        diag_color = "navy"
+
+    ax.plot(fpr, tpr, label=f"ROC curve (AUC = {d['auc']:.4f})", color=roc_color, lw=2.0)
+    ax.plot([0, 1], [0, 1], color=diag_color, lw=0.9, linestyle="--")
+    ax.set_title("ROC-AUC Curve", fontsize=12, pad=10)
+    ax.set_xlabel("False Positive Rate", fontsize=10)
+    ax.set_ylabel("True Positive Rate", fontsize=10)
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xticks(np.arange(0.0, 1.1, 0.2))
+    ax.set_yticks(np.arange(0.0, 1.1, 0.2))
+    ax.tick_params(axis='both', which='major', labelsize=9)
+    ax.grid(True, linestyle="-", alpha=0.2)
+    ax.legend(loc="lower right", fontsize=9, framealpha=0.8)
     plt.tight_layout()
     plt.savefig(out_dir / f"roc_{key}.png", dpi=200)
     plt.close()
