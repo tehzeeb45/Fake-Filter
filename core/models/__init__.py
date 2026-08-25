@@ -6,10 +6,6 @@
 
 All trained on the DeepShield NPZ dataset with video-level split and
 equal-weight soft voting ensemble.
-
-Legacy wrappers (cnn_xception, cnn_efficientnet, vit_community, vit_lnclip,
-vit_vision, lstm_temporal) are retained on disk but not used by the new
-ModelBundle.
 """
 from __future__ import annotations
 
