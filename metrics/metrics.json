@@ -54,31 +54,31 @@
     "new_efficientnet": {
       "model_name": "EfficientNet-B3",
       "architecture": "torchvision efficientnet_b3 (2-class)",
-      "dataset": "140k Real and Fake Faces (Stratified 85/15 Split)",
+      "dataset": "140k Real and Fake Faces (Stratified Split)",
       "metrics": {
-        "accuracy": 0.9994,
-        "precision": 0.9992,
-        "recall": 0.9996,
-        "f1": 0.9994,
+        "accuracy": 0.9991,
+        "precision": 0.9986,
+        "recall": 0.9995,
+        "f1": 0.9990,
         "roc_auc": 1.0000
       },
       "class_report": {
         "real": {
-          "precision": 0.9996,
-          "recall": 0.9992,
-          "f1": 0.9994,
-          "support": 7500
+          "precision": 0.9995,
+          "recall": 0.9986,
+          "f1": 0.9990,
+          "support": 10000
         },
         "fake": {
-          "precision": 0.9992,
-          "recall": 0.9996,
-          "f1": 0.9994,
-          "support": 7500
+          "precision": 0.9986,
+          "recall": 0.9995,
+          "f1": 0.9990,
+          "support": 10000
         }
       },
       "confusion_matrix": [
-        [7494, 6],
-        [3, 7497]
+        [9986, 14],
+        [5, 9995]
       ],
       "chart_confusion": "confusion_efficientnet.png",
       "chart_roc": "roc_efficientnet.png",
@@ -132,31 +132,31 @@
     "new_vit_large_clip": {
       "model_name": "ViT-Large/CLIP",
       "architecture": "timm vit_large_patch14_clip_224 (2-class)",
-      "dataset": "140k Real and Fake Faces (Stratified 85/15 Split)",
+      "dataset": "140k Real and Fake Faces (Stratified Split)",
       "metrics": {
-        "accuracy": 0.9994,
-        "precision": 1.0000,
-        "recall": 0.9988,
-        "f1": 0.9994,
+        "accuracy": 0.9991,
+        "precision": 0.9999,
+        "recall": 0.9982,
+        "f1": 0.9990,
         "roc_auc": 1.0000
       },
       "class_report": {
         "real": {
-          "precision": 0.9988,
-          "recall": 1.0000,
-          "f1": 0.9994,
-          "support": 7500
+          "precision": 0.9982,
+          "recall": 0.9999,
+          "f1": 0.9990,
+          "support": 10000
         },
         "fake": {
-          "precision": 1.0000,
-          "recall": 0.9988,
-          "f1": 0.9994,
-          "support": 7500
+          "precision": 0.9999,
+          "recall": 0.9982,
+          "f1": 0.9990,
+          "support": 10000
         }
       },
       "confusion_matrix": [
-        [7500, 0],
-        [9, 7491]
+        [9999, 1],
+        [18, 9982]
       ],
       "chart_confusion": "confusion_vit_large_clip.png",
       "chart_roc": "roc_vit_large_clip.png",
