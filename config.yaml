@@ -49,18 +49,19 @@ ensemble:                         # FR-14: equal-weight soft voting across 4 new
   # All 4 DeepShield-trained models vote with equal weight (1.0 each).
   # The ensemble.combine() normalises by sum-of-weights automatically.
   # Set a model's weight to 0.0 to exclude it without removing the file.
-  image_weights:                  # UC-03 image detection
-    new_xception: 0.3             # XceptionNet (video model - reduced for images)
-    new_efficientnet: 1.0         # EfficientNet-B3 (best for static images)
-    new_vit_small: 0.2            # ViT-Small (video model - reduced for images)
-    new_vit_large_clip: 1.0       # ViT-Large/CLIP (best for static images)
-  video_weights:                  # UC-04 video detection
-    new_xception: 1.0
-    new_efficientnet: 1.0
-    new_vit_small: 1.0
-  image_threshold: 0.45            # image detection threshold (calibrated for generative AI portraits)
-  video_threshold: 0.40            # video detection threshold (sensitive with Top-K frame pooling)
-  threshold: 0.40                  # default fallback threshold
+  image_weights:                  # UC-03 image detection (ViT-Large CLIP lead + Dual CNN anchors)
+    new_vit_large_clip: 2.0       # Primary AI/synthesis detector (dominates prompt & diffusion fakes)
+    new_efficientnet: 0.8         # 92.47% StyleGAN3 + GRAVEX fine-tuned CNN anchor
+    new_xception: 0.8             # 91.47% StyleGAN3 + DeepShield fine-tuned CNN anchor
+    new_vit_small: 0.4            # Feature stability vote
+  video_weights:                  # UC-04 video detection (4-Model Temporal & Boundary Ensemble)
+    new_xception: 1.2             # 91.47% fine-tuned frame-by-frame texture boundary classifier
+    new_efficientnet: 1.2         # 92.47% fine-tuned facial consistency anchor
+    new_vit_large_clip: 1.0       # AI generative synthesis & semantic motion feature detector
+    new_vit_small: 0.6            # Spatial feature stability vote
+  image_threshold: 0.35            # Calibrated threshold (captures prompt-generated fakes)
+  video_threshold: 0.45            # video detection threshold (sensitive with Top-K frame pooling)
+  threshold: 0.35                  # default fallback threshold
  
 preprocessing:
   video_fps: 5                    # FR-05: configurable frame extraction rate

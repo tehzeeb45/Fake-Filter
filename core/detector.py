@@ -129,6 +129,10 @@ class Detector:
 
             face, box, conf = self.pre.detect_face(bgr)          # FR-06..FR-08
             
+            # Physics-based Digital Image Forensics (sensor noise & frequency analysis)
+            from .forensics import analyze_frequency_and_noise
+            forensic_score = analyze_frequency_and_noise(bgr, face_crop=face)
+
             # TTA (Test-Time Augmentation): Original + Horizontally Flipped face crop.
             # Averages out directional lighting, glare, and smartphone portrait-mode edge anomalies.
             face_flipped = cv2.flip(face, 1)
@@ -159,7 +163,7 @@ class Detector:
             heat_p = save_heatmap_overlay(saliency, face, artifacts / "heatmap.png")
             crop_p = self._persist_png(face, artifacts / "face_crop.png")
 
-            result = self.ensemble.combine(scores, kind="image")
+            result = self.ensemble.combine(scores, kind="image", forensic_score=forensic_score)
             return self._finalize(
                 result, kind="image", artifacts=artifacts,
                 original_name=original_name,
